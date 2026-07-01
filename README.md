@@ -1,5 +1,59 @@
-# Vue 3 + Vite
+# Modern RTI Viewer
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+The Modern RTI Viewer is a complete rewrite of traditional `spidergl` based RTI viewers, leveraging the power of Vue 3 and Three.js. It features a high-performance quadtree LOD system and dynamic, real-time lighting calculation using custom WebGL shaders.
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+## Installation
+
+If you are a developer looking to build or run the project locally:
+
+1. **Install dependencies:**
+   Make sure you have Node.js and `pnpm` installed.
+   ```bash
+   pnpm install
+   ```
+
+2. **Run the Development Server:**
+   ```bash
+   pnpm run dev
+   ```
+   This will spin up a Vite development server and a VitePress documentation server simultaneously.
+
+## Features & Usage
+
+The viewer loads an RTI dataset via a URL property pointing to a directory that contains an `info.xml` file and the hierarchical image tiles.
+
+### Interface Modes
+1. **Pan & Zoom (Hand Icon):**
+   - Click and drag anywhere on the canvas to pan across the image.
+   - Use the scroll wheel (or pinch gesture on trackpads) to zoom in and out.
+   - The quadtree LOD system will automatically load high-resolution tiles as you zoom in.
+
+2. **Light Direction (Lightbulb Icon):**
+   - Click and drag on the main canvas to interactively change the lighting angle.
+   - The lighting simulation uses the RTI coefficients (PTM or HSH) to dynamically compute shadows and highlights.
+   - **Compass Widget:** The widget in the bottom left provides a visual reference of the current light position (x, y). You can also drag the dot inside the compass to move the light.
+
+### Render Modes
+
+You can switch the mathematical rendering mode:
+- **Default Mode:** Computes the standard diffuse reflection based on the encoded RTI coefficients.
+- **Specular Enhancement:** Adds an artificial specular highlight on top of the diffuse lighting to enhance surface details and scratches.
+- **Normals:** Visualizes the surface normal vectors calculated directly from the RTI coefficients, allowing you to see the raw geometric shape without texture color.
+- **Slope Heatmap:** Computes the steepness of the surface and maps it to a color gradient (blue for flat, red for steep). Extremely useful for highlighting shallow engravings or scratches without adjusting the light.
+- **Dual Light:** Calculates a secondary, opposite light source (raking light). The primary light is tinted red and the opposing light blue. This creates high-contrast shadows that perfectly reveal fine tool marks and edges.
+
+## Technical Details
+
+The core magic of RTI (Reflectance Transformation Imaging) happens inside the WebGL Fragment Shaders (`RtiShaders.js`). These shaders reconstruct photorealistic lighting dynamically using pre-calculated coefficients stored in image textures.
+
+There are two primary mathematical formulations supported by this viewer:
+
+### 1. Polynomial Texture Mapping (PTM)
+PTM uses a 2D biquadratic polynomial to estimate the reflectance. It assumes the light direction `(u, v)` is projected onto a flat 2D plane.
+Luminance is calculated as: `a0*u² + a1*v² + a2*u*v + a3*u + a4*v + a5`.
+
+### 2. Hemispherical Harmonics (HSH)
+HSH is a more modern, physically accurate formulation based on Spherical Harmonics, but restricted to the upper hemisphere. It uses 4 complex basis functions based on the spherical coordinates `phi` and `theta` of the light vector, stored across separate Red, Green, and Blue channels for much higher fidelity.
+
+### Usage as a Web Component
+This viewer is compiled to be a completely standalone, zero-dependency Web Component for easy integration into existing applications. See `vite.config.js` for the build settings.
