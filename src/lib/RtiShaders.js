@@ -259,3 +259,177 @@ export const LrgbPtmMaterial = (textures, lightDir, bias, scale, bounds) => {
     transparent: true
   });
 };
+
+export const NeuralRtiMaterial = (textures, lightDir, weights, bounds) => {
+  const w1 = [];
+  for (let i = 0; i < 16; i++) {
+    for (let j = 0; j < 7; j++) {
+      w1.push(weights.w1[i][j]);
+    }
+  }
+  const b1 = weights.b1;
+
+  const w2 = [];
+  for (let i = 0; i < 16; i++) {
+    for (let j = 0; j < 16; j++) {
+      w2.push(weights.w2[i][j]);
+    }
+  }
+  const b2 = weights.b2;
+
+  const w3 = [];
+  for (let i = 0; i < 3; i++) {
+    for (let j = 0; j < 16; j++) {
+      w3.push(weights.w3[i][j]);
+    }
+  }
+  const b3 = weights.b3;
+
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uLightDir: { value: lightDir },
+      tex0: { value: textures[0] || null },
+      uBounds: { value: bounds },
+      uW1: { value: new Float32Array(w1) },
+      uB1: { value: new Float32Array(b1) },
+      uW2: { value: new Float32Array(w2) },
+      uB2: { value: new Float32Array(b2) },
+      uW3: { value: new Float32Array(w3) },
+      uB3: { value: new Float32Array(b3) },
+      uRenderMode: { value: 0 },
+      uSpecularExponent: { value: 10.0 }
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec2 vWorldPos;
+      void main() {
+        vUv = uv;
+        vec4 wPos = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wPos.xy;
+        gl_Position = projectionMatrix * viewMatrix * wPos;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uLightDir;
+      uniform sampler2D tex0;
+      uniform vec4 uBounds;
+      uniform int uRenderMode;
+      uniform float uSpecularExponent;
+      
+      uniform float uW1[112];
+      uniform float uB1[16];
+      uniform float uW2[256];
+      uniform float uB2[16];
+      uniform float uW3[48];
+      uniform float uB3[3];
+
+      varying vec2 vUv;
+      varying vec2 vWorldPos;
+
+      vec3 evaluateMLP(vec3 lDir, vec4 latent) {
+        float x[7];
+        x[0] = latent.r;
+        x[1] = latent.g;
+        x[2] = latent.b;
+        x[3] = latent.a;
+        x[4] = lDir.x;
+        x[5] = lDir.y;
+        x[6] = lDir.z;
+
+        // Layer 1
+        float h1[16];
+        for (int i = 0; i < 16; i++) {
+          float val = uB1[i];
+          for (int j = 0; j < 7; j++) {
+            val += uW1[i * 7 + j] * x[j];
+          }
+          h1[i] = max(0.0, val);
+        }
+
+        // Layer 2
+        float h2[16];
+        for (int i = 0; i < 16; i++) {
+          float val = uB2[i];
+          for (int j = 0; j < 16; j++) {
+            val += uW2[i * 16 + j] * h1[j];
+          }
+          h2[i] = max(0.0, val);
+        }
+
+        // Layer 3
+        float rgb[3];
+        for (int i = 0; i < 3; i++) {
+          float val = uB3[i];
+          for (int j = 0; j < 16; j++) {
+            val += uW3[i * 16 + j] * h2[j];
+          }
+          rgb[i] = 1.0 / (1.0 + exp(-val));
+        }
+
+        return vec3(rgb[0], rgb[1], rgb[2]);
+      }
+
+      void main() {
+        if (vWorldPos.x < uBounds.x || vWorldPos.x > uBounds.y || vWorldPos.y < uBounds.z || vWorldPos.y > uBounds.w) {
+          gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+          return;
+        }
+
+        vec4 latent = texture2D(tex0, vUv);
+        vec3 color = evaluateMLP(uLightDir, latent);
+
+        if (uRenderMode == 0) {
+          gl_FragColor = vec4(color, 1.0);
+        } else if (uRenderMode == 5) {
+          // Latent Map Mode
+          gl_FragColor = vec4(latent.rgb, 1.0);
+        } else {
+          // Estimate normal N using finite differences at normal incidence (0, 0, 1)
+          float eps = 0.005;
+          float z_eps = sqrt(1.0 - eps * eps);
+          
+          vec3 c0 = evaluateMLP(vec3(0.0, 0.0, 1.0), latent);
+          vec3 cx = evaluateMLP(vec3(eps, 0.0, z_eps), latent);
+          vec3 cy = evaluateMLP(vec3(0.0, eps, z_eps), latent);
+          
+          float y0 = dot(c0, vec3(0.299, 0.587, 0.114));
+          float yx = dot(cx, vec3(0.299, 0.587, 0.114));
+          float yy = dot(cy, vec3(0.299, 0.587, 0.114));
+          
+          float gx = (yx - y0) / eps;
+          float gy = (yy - y0) / eps;
+          
+          // Pseudo-normal (flip gradients to match standard surface normal, scale by 4.0 for depth)
+          vec3 N = normalize(vec3(-gx * 4.0, -gy * 4.0, 1.0));
+
+          if (uRenderMode == 1) {
+            // Glossy Mode (Blinn-Phong Specular Enhancement)
+            vec3 L = normalize(uLightDir);
+            vec3 V = vec3(0.0, 0.0, 1.0);
+            vec3 H = normalize(L + V);
+            float specular = pow(max(0.0, dot(N, H)), uSpecularExponent);
+            gl_FragColor = vec4(color + vec3(specular * 0.8), 1.0);
+          } else if (uRenderMode == 2) {
+            // Normals Mode
+            vec3 normalColor = N * 0.5 + 0.5;
+            float diffuse = max(0.0, dot(N, normalize(uLightDir)));
+            gl_FragColor = vec4(normalColor * (diffuse * 0.8 + 0.2), 1.0);
+          } else if (uRenderMode == 3) {
+            // Slope Heatmap
+            float steepness = 1.0 - N.z;
+            vec3 heat = mix(vec3(0.0, 0.0, 0.8), vec3(0.0, 0.8, 0.2), clamp(steepness * 3.0, 0.0, 1.0));
+            heat = mix(heat, vec3(1.0, 0.0, 0.0), clamp(steepness * 3.0 - 1.0, 0.0, 1.0));
+            gl_FragColor = vec4(heat, 1.0);
+          } else if (uRenderMode == 4) {
+            // Dual Light
+            vec3 color2 = evaluateMLP(vec3(-uLightDir.x, -uLightDir.y, uLightDir.z), latent);
+            vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
+            gl_FragColor = vec4(dualColor, 1.0);
+          }
+        }
+      }
+    `,
+    transparent: true
+  });
+};
+

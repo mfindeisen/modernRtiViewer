@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootWrapper" class="flex flex-row w-full h-full min-h-[600px] bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-[600px] bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
     
     <!-- Sidebar Toolbar (Outside the image) -->
     <div class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col items-center py-4 relative z-50 shrink-0">
@@ -51,11 +51,18 @@
           <span class="text-white/60">Visualize surface steepness</span>
         </div>
       </button>
-      <button @click="setRenderMode(4)" :class="['group relative p-3 rounded-xl transition-all', renderMode === 4 ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
+      <button @click="setRenderMode(4)" :class="['group relative p-3 rounded-xl transition-all mb-2', renderMode === 4 ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
         <SunIcon class="w-5 h-5" />
         <div class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-2 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-lg text-white text-xs font-medium whitespace-nowrap opacity-0 scale-95 transition-all duration-200 group-hover:opacity-100 group-hover:scale-100 pointer-events-none z-50 shadow-2xl flex flex-col items-start text-left">
           <span class="text-white font-bold mb-0.5">Dual Light</span>
           <span class="text-white/60">Red & Blue opposing lights</span>
+        </div>
+      </button>
+      <button v-if="rtiInfo?.type === 5" @click="setRenderMode(5)" :class="['group relative p-3 rounded-xl transition-all mb-2', renderMode === 5 ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
+        <LayersIcon class="w-5 h-5" />
+        <div class="absolute left-full top-1/2 -translate-y-1/2 ml-4 px-3 py-2 bg-slate-900/90 backdrop-blur-md border border-white/10 rounded-lg text-white text-xs font-medium whitespace-nowrap opacity-0 scale-95 transition-all duration-200 group-hover:opacity-100 group-hover:scale-100 pointer-events-none z-50 shadow-2xl flex flex-col items-start text-left">
+          <span class="text-white font-bold mb-0.5">Latent Map</span>
+          <span class="text-white/60">View raw learned latent map</span>
         </div>
       </button>
 
@@ -222,12 +229,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, shallowRef } from 'vue';
+import { ref, onMounted, onBeforeUnmount, shallowRef, nextTick } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { Hand as HandIcon, Lightbulb as LightbulbIcon, Download as DownloadIcon, Link as LinkIcon, Image as ImageIcon, Sparkles as SparklesIcon, Layers as LayersIcon, Info as InfoIcon, Maximize as MaximizeIcon, Minimize as MinimizeIcon, Copy as CopyIcon, Check as CheckIcon, Map as MapIcon, Sun as SunIcon } from '@lucide/vue';
 import { QuadtreeManager } from '../lib/QuadtreeManager';
-import { HshShaderMaterial, LrgbPtmMaterial } from '../lib/RtiShaders';
+import { HshShaderMaterial, LrgbPtmMaterial, NeuralRtiMaterial } from '../lib/RtiShaders';
+import { TiffTileLoader } from '../lib/TiffTileLoader';
 
 const props = defineProps({
   url: {
@@ -276,6 +284,10 @@ const quadtree = shallowRef(null);
 const loadingTileIds = new Set(); // Track tiles currently being loaded
 const tileMeshes = new Map(); // node.id -> THREE.Mesh
 const textureLoader = new THREE.TextureLoader();
+const tiffLoader = shallowRef(null); // TiffTileLoader instance when url ends with .tif
+const textureCache = new Map();
+const MAX_CACHE_SIZE = 100;
+
 
 onMounted(async () => {
   try {
@@ -285,6 +297,14 @@ onMounted(async () => {
     initThreeJs();
     setupInteraction();
     loading.value = false;
+    nextTick(() => {
+      if (rootWrapper.value) {
+        rootWrapper.value.dispatchEvent(new CustomEvent('rti-loaded', {
+          detail: rtiInfo.value,
+          bubbles: true
+        }));
+      }
+    });
   } catch (err) {
     error.value = err.message;
     loading.value = false;
@@ -298,70 +318,75 @@ onBeforeUnmount(() => {
     container.value.removeChild(renderer.value.domElement);
   }
   if (controls.value) controls.value.dispose();
+  for (const textures of textureCache.values()) {
+    textures.forEach(tex => tex.dispose());
+  }
+  textureCache.clear();
 });
 
 const fetchRtiInfo = async () => {
-  const response = await fetch(`${props.url}/info.xml`);
-  if (!response.ok) throw new Error(`Could not fetch info.xml from ${props.url}`);
+  // --- TIFF Mode: detect .tif URL and use TiffTileLoader ---
+  console.log("props: ", props);
+  const cleanUrl = props.url.split(/[?#]/)[0].trim().toLowerCase();
+  if (cleanUrl.endsWith('.tif') || cleanUrl.endsWith('.tiff')) {
+    const loader = new TiffTileLoader(props.url);
+    const info = await loader.open();
+    tiffLoader.value = loader;
+    rtiInfo.value = info;
+    console.log('[TiffTileLoader] RTI Info:', rtiInfo.value);
+    return;
+  }
+
+  // --- Legacy Mode: info.xml or info.json ---
+  // Try info.json first (modern rtiprep output)
+  let response = await fetch(`${props.url}/info.json`);
+  if (response.ok) {
+    const json = await response.json();
+    const typeMap = { 'HSH_RTI': 1, 'LRGB_PTM': 2, 'RGB_PTM': 3, 'IMAGE': 4 };
+    rtiInfo.value = {
+      type: typeMap[json.type] ?? 4,
+      width: json.width,
+      height: json.height,
+      tileSize: json.tileSize,
+      layerCount: json.layerCount ?? 1,
+      bias: json.bias ?? [],
+      scale: json.scale ?? [],
+    };
+    console.log('Parsed RTI Info (JSON):', rtiInfo.value);
+    return;
+  }
+
+  // Fallback: info.xml (legacy webGLRtiMaker format)
+  response = await fetch(`${props.url}/info.xml`);
+  if (!response.ok) throw new Error(`Could not load info from ${props.url}`);
   const xmlText = await response.text();
   
   const parser = new DOMParser();
-  const xmlDoc = parser.parseFromString(xmlText, "text/xml");
-  
-  const getValue = (tag) => {
-    const el = xmlDoc.getElementsByTagName(tag)[0];
-    return el ? el.textContent : null;
-  };
+  const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+  const getValue = (tag) => { const el = xmlDoc.getElementsByTagName(tag)[0]; return el ? el.textContent : null; };
 
-  // Support both new <rti> format and old <MultiRes> format
   const contentEl = xmlDoc.getElementsByTagName('Content')[0];
   const sizeEl = xmlDoc.getElementsByTagName('Size')[0];
   
   if (contentEl && sizeEl) {
-    // Old Format (e.g. LRGB_PTM)
     const contentType = contentEl.getAttribute('type');
     const typeMap = { 'HSH': 1, 'HSH_RTI': 1, 'LRGB_PTM': 2, 'RGB_PTM': 3, 'IMAGE': 4 };
-    
-    // Attempt to extract tile size from <Tree> block (usually 2nd line)
     const treeEl = xmlDoc.getElementsByTagName('Tree')[0];
     let tileSize = 256;
-    if (treeEl) {
-      const treeLines = treeEl.textContent.trim().split('\n');
-      if (treeLines.length > 1) tileSize = parseInt(treeLines[1]);
-    }
-
-    // Extract Bias and Scale vectors for PTM materials
+    if (treeEl) { const lines = treeEl.textContent.trim().split('\n'); if (lines.length > 1) tileSize = parseInt(lines[1]); }
     const biasEl = xmlDoc.getElementsByTagName('Bias')[0];
     const scaleEl = xmlDoc.getElementsByTagName('Scale')[0];
     const bias = biasEl ? biasEl.textContent.trim().split(/\s+/).map(parseFloat) : [];
     const scale = scaleEl ? scaleEl.textContent.trim().split(/\s+/).map(parseFloat) : [];
-
     const ordlen = parseInt(sizeEl.getAttribute('coefficients')) || 3;
     const parsedType = typeMap[contentType] || 2;
     let numLayers = ordlen;
-    if (parsedType === 2) numLayers = 3; // LRGB_PTM always has 3 layers
-
-    rtiInfo.value = {
-      type: parsedType,
-      width: parseInt(sizeEl.getAttribute('width')),
-      height: parseInt(sizeEl.getAttribute('height')),
-      tileSize: tileSize,
-      layerCount: numLayers,
-      bias: bias,
-      scale: scale
-    };
+    if (parsedType === 2) numLayers = 3;
+    rtiInfo.value = { type: parsedType, width: parseInt(sizeEl.getAttribute('width')), height: parseInt(sizeEl.getAttribute('height')), tileSize, layerCount: numLayers, bias, scale };
   } else {
-    // New Format
-    rtiInfo.value = {
-      type: parseInt(getValue('type')), 
-      width: parseInt(getValue('width')),
-      height: parseInt(getValue('height')),
-      tileSize: parseInt(getValue('tileSize')),
-      layerCount: parseInt(getValue('layerCount')) || 1
-    };
+    rtiInfo.value = { type: parseInt(getValue('type')), width: parseInt(getValue('width')), height: parseInt(getValue('height')), tileSize: parseInt(getValue('tileSize')), layerCount: parseInt(getValue('layerCount')) || 1 };
   }
-  
-  console.log("Parsed RTI Info:", rtiInfo.value);
+  console.log('Parsed RTI Info (XML):', rtiInfo.value);
 };
 
 const initThreeJs = () => {
@@ -487,8 +512,8 @@ const updateTiles = () => {
     for (const [id, mesh] of tileMeshes.entries()) {
       if (!visibleIds.has(id)) {
         scene.value.remove(mesh);
-        mesh.material.dispose();
-        // Dispose textures? In a real app we'd keep a texture cache.
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) mesh.material.dispose();
         tileMeshes.delete(id);
       }
     }
@@ -523,67 +548,95 @@ const loadTileMesh = (node, worldBox) => {
 
   const geometry = new THREE.PlaneGeometry(width, height);
   
-  // We need to fetch multiple layers if HSH
-  const textures = [];
-  let loadedCount = 0;
-  
-  // Create an empty mesh first to prevent duplicate loading requests
-  // but keep loadingTileIds tracked to prevent parent deletion
   loadingTileIds.add(node.id);
   const placeholderMat = new THREE.MeshBasicMaterial({ color: 0x333333, wireframe: true });
   const mesh = new THREE.Mesh(geometry, placeholderMat);
-  
-  // Set Z position based on level so higher detail tiles render IN FRONT of lower detail tiles
   mesh.position.set(centerX, centerY, node.level * 0.1);
-  
   scene.value.add(mesh);
   tileMeshes.set(node.id, mesh);
 
-  // Load textures based on layer count
-  for (let l = 0; l < rtiInfo.value.layerCount; l++) {
-    // The old exporter outputs 1-based layer indices: 1_1.jpg, 1_2.jpg, 1_3.jpg
-    const url = `${props.url}/${node.id}_${l + 1}.jpg`; 
-    
-    if (isDebug) {
-      console.log(`[RTI Viewer] Requesting image: ${url}`);
+  const applyTextures = (textures) => {
+    const boundsMinX = (quadtree.value.imgBox.minX - 0.5) * quadtree.value.maxSize;
+    const boundsMaxX = (quadtree.value.imgBox.maxX - 0.5) * quadtree.value.maxSize;
+    const boundsMinY = (quadtree.value.imgBox.minY - 0.5) * quadtree.value.maxSize;
+    const boundsMaxY = (quadtree.value.imgBox.maxY - 0.5) * quadtree.value.maxSize;
+    const bounds = new THREE.Vector4(boundsMinX, boundsMaxX, boundsMinY, boundsMaxY);
+
+    let material;
+    if (rtiInfo.value.type === 5) {
+      material = NeuralRtiMaterial(textures, lightDir.value, rtiInfo.value.weights, bounds);
+    } else if (rtiInfo.value.type === 1) {
+      material = HshShaderMaterial(textures, lightDir.value, rtiInfo.value.bias, rtiInfo.value.scale, bounds);
+    } else if (rtiInfo.value.type === 2) {
+      material = LrgbPtmMaterial(textures, lightDir.value, rtiInfo.value.bias, rtiInfo.value.scale, bounds);
+    } else {
+      material = new THREE.MeshBasicMaterial({ map: textures[0] });
     }
-    
-    // Fallback error handling if image doesn't exist during dev
+    if (material.uniforms) {
+      if (material.uniforms.uRenderMode) material.uniforms.uRenderMode.value = renderMode.value;
+      if (material.uniforms.uSpecularExponent) material.uniforms.uSpecularExponent.value = specularExponent.value;
+    }
+    mesh.material = material;
+    mesh.geometry = new THREE.PlaneGeometry(width, height);
+    loadingTileIds.delete(node.id);
+  };
+
+  const cacheKey = `${props.url}_${node.id}`;
+  if (textureCache.has(cacheKey)) {
+    const cachedTextures = textureCache.get(cacheKey);
+    // Update LRU access order
+    textureCache.delete(cacheKey);
+    textureCache.set(cacheKey, cachedTextures);
+    applyTextures(cachedTextures);
+    return;
+  }
+
+  const cacheAndApplyTextures = (textures) => {
+    textureCache.set(cacheKey, textures);
+    if (textureCache.size > MAX_CACHE_SIZE) {
+      const oldestKey = textureCache.keys().next().value;
+      const oldestTextures = textureCache.get(oldestKey);
+      if (oldestTextures) {
+        oldestTextures.forEach(tex => tex.dispose());
+      }
+      textureCache.delete(oldestKey);
+    }
+    applyTextures(textures);
+  };
+
+  // --- TIFF Mode ---
+  if (tiffLoader.value) {
+    tiffLoader.value.loadTileTextures(node, quadtree.value.nLevels, rtiInfo.value.tileSize)
+      .then((textures) => {
+        if (!textures || textures.length === 0) {
+          loadingTileIds.delete(node.id);
+          return;
+        }
+        cacheAndApplyTextures(textures);
+      })
+      .catch((err) => {
+        console.error(`[TiffTileLoader] Error loading tile for node ${node.id}:`, err);
+        loadingTileIds.delete(node.id);
+      });
+    return;
+  }
+
+  // --- Classic tile-folder Mode ---
+  const textures = [];
+  let loadedCount = 0;
+  for (let l = 0; l < rtiInfo.value.layerCount; l++) {
+    const url = `${props.url}/${node.id}_${l + 1}.jpg`;
+    if (isDebug) console.log(`[RTI Viewer] Requesting image: ${url}`);
     textureLoader.load(url, (tex) => {
       textures[l] = tex;
-      tex.colorSpace = THREE.NoColorSpace; // crucial for mathematical data!
+      tex.colorSpace = THREE.NoColorSpace;
       loadedCount++;
-      
       if (loadedCount === rtiInfo.value.layerCount) {
-        // All layers loaded, swap material!
-        let material;
-        
-        const boundsMinX = (quadtree.value.imgBox.minX - 0.5) * quadtree.value.maxSize;
-        const boundsMaxX = (quadtree.value.imgBox.maxX - 0.5) * quadtree.value.maxSize;
-        const boundsMinY = (quadtree.value.imgBox.minY - 0.5) * quadtree.value.maxSize;
-        const boundsMaxY = (quadtree.value.imgBox.maxY - 0.5) * quadtree.value.maxSize;
-        const bounds = new THREE.Vector4(boundsMinX, boundsMaxX, boundsMinY, boundsMaxY);
-
-        if (rtiInfo.value.type === 1) { // HSH
-          material = HshShaderMaterial(textures, lightDir.value, rtiInfo.value.bias, rtiInfo.value.scale, bounds);
-        } else if (rtiInfo.value.type === 2) { // LRGB PTM
-          material = LrgbPtmMaterial(textures, lightDir.value, rtiInfo.value.bias, rtiInfo.value.scale, bounds);
-        } else {
-          material = new THREE.MeshBasicMaterial({ map: textures[0] });
-        }
-
-        if (material.uniforms) {
-          material.uniforms.uRenderMode.value = renderMode.value;
-          material.uniforms.uSpecularExponent.value = specularExponent.value;
-        }
-
-        mesh.material = material;
-        mesh.geometry = new THREE.PlaneGeometry(width, height);
-        loadingTileIds.delete(node.id); // Done loading this tile!
+        cacheAndApplyTextures(textures);
       }
     }, undefined, (err) => {
       console.error(`Error loading tile ${node.id}_${l + 1}:`, err);
-      loadingTileIds.delete(node.id); // Stop blocking cleanup if error
+      loadingTileIds.delete(node.id);
     });
   }
 };
@@ -608,6 +661,9 @@ const setMode = (mode) => {
   currentMode.value = mode;
   if (controls.value) {
     controls.value.enabled = (mode === 'pan');
+  }
+  if (container.value) {
+    container.value.style.touchAction = (mode === 'light') ? 'none' : 'auto';
   }
 };
 
@@ -652,19 +708,36 @@ const setupInteraction = () => {
   let isDraggingLight = false;
   let isDraggingCompass = false;
 
-  // Main Canvas Interaction
-  container.value.addEventListener('mousedown', () => {
-    if (currentMode.value === 'light') isDraggingLight = true;
+  // Main Canvas Interaction (Mouse & Touch via PointerEvents)
+  container.value.addEventListener('pointerdown', (e) => {
+    if (currentMode.value === 'light') {
+      isDraggingLight = true;
+      container.value.setPointerCapture(e.pointerId);
+      handleCanvasPointerMove(e);
+    }
   });
 
-  window.addEventListener('mouseup', () => {
-    isDraggingLight = false;
-    isDraggingCompass = false;
+  container.value.addEventListener('pointermove', (e) => {
+    if (currentMode.value === 'light' && isDraggingLight) {
+      handleCanvasPointerMove(e);
+    }
   });
 
-  container.value.addEventListener('mousemove', (e) => {
-    if (currentMode.value !== 'light' || !isDraggingLight) return;
+  container.value.addEventListener('pointerup', (e) => {
+    if (isDraggingLight) {
+      container.value.releasePointerCapture(e.pointerId);
+      isDraggingLight = false;
+    }
+  });
 
+  container.value.addEventListener('pointercancel', (e) => {
+    if (isDraggingLight) {
+      container.value.releasePointerCapture(e.pointerId);
+      isDraggingLight = false;
+    }
+  });
+
+  const handleCanvasPointerMove = (e) => {
     const rect = container.value.getBoundingClientRect();
     const size = Math.min(rect.width, rect.height);
     const centerX = rect.width / 2;
@@ -675,35 +748,52 @@ const setupInteraction = () => {
     const y = ((e.clientY - rect.top - centerY) / size) + 0.5;
 
     updateLightFromNormalized(x, y);
-  });
+  };
 
-  // Compass Interaction
+  // Compass Interaction (Mouse & Touch via PointerEvents)
   if (compassRef.value) {
-    compassRef.value.addEventListener('mousedown', (e) => {
+    compassRef.value.addEventListener('pointerdown', (e) => {
       isDraggingCompass = true;
-      handleCompassMove(e);
+      compassRef.value.setPointerCapture(e.pointerId);
+      handleCompassPointerMove(e);
     });
     
-    window.addEventListener('mousemove', (e) => {
+    compassRef.value.addEventListener('pointermove', (e) => {
       if (isDraggingCompass) {
-        handleCompassMove(e);
+        handleCompassPointerMove(e);
       }
     });
+
+    compassRef.value.addEventListener('pointerup', (e) => {
+      if (isDraggingCompass) {
+        compassRef.value.releasePointerCapture(e.pointerId);
+        isDraggingCompass = false;
+      }
+    });
+
+    compassRef.value.addEventListener('pointercancel', (e) => {
+      if (isDraggingCompass) {
+        compassRef.value.releasePointerCapture(e.pointerId);
+        isDraggingCompass = false;
+      }
+    });
+
+    const handleCompassPointerMove = (e) => {
+      const rect = compassRef.value.getBoundingClientRect();
+      let x = (e.clientX - rect.left) / rect.width;
+      let y = (e.clientY - rect.top) / rect.height;
+      
+      x = Math.max(0, Math.min(1, x));
+      y = Math.max(0, Math.min(1, y));
+
+      updateLightFromNormalized(x, y);
+    };
   }
-};
 
-const handleCompassMove = (e) => {
-  if (!compassRef.value) return;
-  const rect = compassRef.value.getBoundingClientRect();
-  // x, y mapped from 0 to 1 over the compass bounding box
-  let x = (e.clientX - rect.left) / rect.width;
-  let y = (e.clientY - rect.top) / rect.height;
-  
-  // Clamp to compass box so we don't blow up calculations if dragged outside
-  x = Math.max(0, Math.min(1, x));
-  y = Math.max(0, Math.min(1, y));
-
-  updateLightFromNormalized(x, y);
+  // Set initial touch action style
+  if (container.value) {
+    container.value.style.touchAction = (currentMode.value === 'light') ? 'none' : 'auto';
+  }
 };
 
 const updateLightFromNormalized = (x, y) => {
