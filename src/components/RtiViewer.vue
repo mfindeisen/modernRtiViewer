@@ -343,14 +343,19 @@ const fetchRtiInfo = async () => {
   if (response.ok) {
     const json = await response.json();
     const typeMap = { 'HSH_RTI': 1, 'LRGB_PTM': 2, 'RGB_PTM': 3, 'IMAGE': 4 };
+    
+    // Support nested format from rtiprep
+    const content = json.content || json;
+    const tree = json.tree || json;
+
     rtiInfo.value = {
-      type: typeMap[json.type] ?? 4,
-      width: json.width,
-      height: json.height,
-      tileSize: json.tileSize,
-      layerCount: json.layerCount ?? 1,
-      bias: json.bias ?? [],
-      scale: json.scale ?? [],
+      type: typeMap[content.type] ?? 4,
+      width: content.width,
+      height: content.height,
+      tileSize: tree.tileSize,
+      layerCount: content.layerCount ?? content.coefficients ?? 1,
+      bias: content.bias ?? [],
+      scale: content.scale ?? [],
     };
     console.log('Parsed RTI Info (JSON):', rtiInfo.value);
     return;
