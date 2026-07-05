@@ -13,14 +13,21 @@
 
 import { fromUrl, Pool } from 'geotiff';
 import * as THREE from 'three';
+import type { RtiInfo, QuadtreeNode } from '../types/rti.js';
 
 export class TiffTileLoader {
-  constructor(url) {
+  url: string;
+  tiff: Awaited<ReturnType<typeof fromUrl>> | null = null;
+  images: Awaited<ReturnType<Awaited<ReturnType<typeof fromUrl>>['getImage']>>[] = [];
+  info: RtiInfo | null = null;
+  pool: Pool;
+  rtiType = 4;
+  numCoeffs = 1;
+  samplesPerPixel = 1;
+
+  constructor(url: string) {
     this.url = url;
-    this.tiff = null;
-    this.images = []; // one per pyramid level (IFD)
-    this.info = null; // parsed metadata matching RtiViewer rtiInfo format
-    this.pool = new Pool(); // Pool of web workers for background decoding
+    this.pool = new Pool();
   }
 
   /**
@@ -119,7 +126,7 @@ export class TiffTileLoader {
    * Level 0 = root (lowest res), level nLevels-1 = full res.
    * TIFF IFDs: IFD 0 = full res (highest), IFD n = lowest res.
    */
-  _tiffLevelForNodeLevel(nodeLevel, nLevels) {
+  _tiffLevelForNodeLevel(nodeLevel: number, nLevels: number) {
     // Node level 0 = coarsest, node level nLevels-1 = finest
     // TIFF IFD 0 = finest, IFD nLevels-1 = coarsest
     return Math.max(0, nLevels - 1 - nodeLevel);
@@ -135,7 +142,8 @@ export class TiffTileLoader {
    * @param {number} nLevels - total pyramid levels
    * @param {number} tileSize - tile size in pixels (256)
    */
-  async loadTileTextures(node, nLevels, tileSize) {
+  async loadTileTextures(node: QuadtreeNode, nLevels: number, _tileSize: number) {
+    if (!node.box) return null;
     const tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
     const image = this.images[Math.min(tiffLevel, this.images.length - 1)];
 
@@ -161,19 +169,19 @@ export class TiffTileLoader {
 
     // Fetch raw interleaved uint8 data for this tile window
     // geotiff.js readRasters returns one Float32Array per sample
-    const rasters = await image.readRasters({
+    const rasters = (await image.readRasters({
       window: [x0, y0, x1, y1],
-      interleave: false, // get separate arrays per channel
-      pool: this.pool,   // decode using web workers in background
-    });
+      interleave: false,
+      pool: this.pool,
+    })) as ArrayLike<number>[];
 
-    // rasters is an array: rasters[channelIdx] = Uint8Array/Float32Array of width*height values
+    const sample = (channel: number, idx: number) => Number(rasters[channel][idx]);
     const numChannels = this.samplesPerPixel;
     const pixelCount = tileW * tileH;
 
     // Build one DataTexture per shader layer
     // The shader expects each layer as an RGB texture
-    const textures = [];
+    const textures: THREE.DataTexture[] = [];
 
     for (let layer = 0; layer < this.numCoeffs; layer++) {
       const buf = new Uint8Array(tileW * tileH * 4);
@@ -188,10 +196,10 @@ export class TiffTileLoader {
 
           if (this.rtiType === 5) {
             // Neural RTI: 4 latent channels
-            r = rasters[0][srcIdx];
-            g = rasters[1][srcIdx];
-            b = rasters[2][srcIdx];
-            const a = rasters[3][srcIdx];
+            r = sample(0, srcIdx);
+            g = sample(1, srcIdx);
+            b = sample(2, srcIdx);
+            const a = sample(3, srcIdx);
             buf[destIdx * 4 + 0] = r;
             buf[destIdx * 4 + 1] = g;
             buf[destIdx * 4 + 2] = b;
@@ -201,24 +209,24 @@ export class TiffTileLoader {
 
           if (this.rtiType === 4) {
             // Standard image — single layer
-            r = rasters[0][srcIdx];
-            g = rasters[1][srcIdx];
-            b = rasters[2][srcIdx];
+            r = sample(0, srcIdx);
+            g = sample(1, srcIdx);
+            b = sample(2, srcIdx);
           } else if (this.rtiType === 2) {
             // LRGB_PTM: layer 0 = channels 0,1,2 / layer 1 = 3,4,5 / layer 2 = 6,7,8
-            r = rasters[layer * 3 + 0][srcIdx];
-            g = rasters[layer * 3 + 1][srcIdx];
-            b = rasters[layer * 3 + 2][srcIdx];
+            r = sample(layer * 3 + 0, srcIdx);
+            g = sample(layer * 3 + 1, srcIdx);
+            b = sample(layer * 3 + 2, srcIdx);
           } else if (this.rtiType === 3) {
             // RGB_PTM: R coeffs 0..5, G coeffs 6..11, B coeffs 12..17
-            r = rasters[layer][srcIdx];           // Red coefficient k
-            g = rasters[6 + layer][srcIdx];       // Green coefficient k
-            b = rasters[12 + layer][srcIdx];      // Blue coefficient k
+            r = sample(layer, srcIdx);
+            g = sample(6 + layer, srcIdx);
+            b = sample(12 + layer, srcIdx);
           } else {
             // HSH: R coeffs 0..n-1, G coeffs n..2n-1, B coeffs 2n..3n-1
-            r = rasters[layer][srcIdx];
-            g = rasters[this.numCoeffs + layer][srcIdx];
-            b = rasters[2 * this.numCoeffs + layer][srcIdx];
+            r = sample(layer, srcIdx);
+            g = sample(this.numCoeffs + layer, srcIdx);
+            b = sample(2 * this.numCoeffs + layer, srcIdx);
           }
 
           buf[destIdx * 4 + 0] = r;
