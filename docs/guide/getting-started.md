@@ -18,9 +18,20 @@ If you are a developer looking to build or run the project locally:
    ```
    This will spin up a Vite development server (usually at `http://localhost:5173`).
 
+3. **Run tests:**
+   ```bash
+   pnpm test
+   pnpm test:e2e
+   ```
+
 ## Usage Instructions
 
-The viewer loads an RTI dataset via a URL property pointing to a directory that contains an `info.xml` file and the hierarchical image tiles.
+The viewer loads an RTI dataset via a URL property pointing to either:
+
+- A **directory** containing `info.json` or `info.xml` plus hierarchical JPG tiles, or
+- A single **GeoTIFF** file (`.tif` / `.tiff`) produced by `rtiprep -tiff`
+
+GeoTIFF support is loaded on demand — JPG-only datasets do not download the TIFF decoder.
 
 ### Interface Modes
 
