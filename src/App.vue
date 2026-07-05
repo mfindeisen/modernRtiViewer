@@ -16,12 +16,12 @@
     <main class="max-w-6xl mx-auto">
       <div class="glass-card p-6 border border-slate-200 shadow-xl rounded-2xl bg-white">
         <!-- The Viewer Component -->
-        <RtiViewer url="/test-record" />
+        <RtiViewer url="/test-record" class="min-h-[49rem] h-[min(80vh,calc(100svh-12rem))]" />
       </div>
     </main>
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import RtiViewer from './components/RtiViewer.vue';
 </script>
