@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+.pnpm-store
 
 # Editor directories and files
 .vscode/*
@@ -28,3 +29,9 @@ public/mock/
 public/test-record/
 public/webrti/
 
+# Playwright
+test-results/
+playwright-report/
+
+# VitePress build cache
+docs/.vitepress/cache/
