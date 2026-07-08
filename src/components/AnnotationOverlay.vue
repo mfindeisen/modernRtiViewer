@@ -2,7 +2,7 @@
   <svg
     v-if="visible"
     ref="overlayEl"
-    class="absolute inset-0 z-30 touch-none w-full h-full"
+    class="absolute inset-0 z-20 touch-none w-full h-full"
     :class="interactive ? 'pointer-events-auto cursor-crosshair' : 'pointer-events-none'"
     :viewBox="`0 0 ${overlaySize.w} ${overlaySize.h}`"
     preserveAspectRatio="none"

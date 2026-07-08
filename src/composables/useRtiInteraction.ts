@@ -22,7 +22,7 @@ export function useRtiInteraction({
   container,
   getRenderer,
   getCompassEl,
-  setControlsEnabled,
+  setControlMode,
   onLeaveAnnotate,
   onLeaveWhiteBalance,
   onWhiteBalancePick,
@@ -38,7 +38,11 @@ export function useRtiInteraction({
     if (!container.value) return;
 
     const interactiveModes = mode === 'light' || mode === 'annotate' || mode === 'whitebalance';
-    container.value.style.touchAction = interactiveModes ? 'none' : 'auto';
+    if (mode === 'whitebalance') {
+      container.value.style.touchAction = 'manipulation';
+    } else {
+      container.value.style.touchAction = interactiveModes ? 'none' : 'auto';
+    }
     container.value.style.cursor = mode === 'whitebalance' ? 'crosshair' : '';
 
     const canvas = getRenderer()?.domElement;
@@ -50,7 +54,7 @@ export function useRtiInteraction({
 
   function setMode(mode: typeof currentMode.value) {
     currentMode.value = mode;
-    setControlsEnabled(mode === 'pan');
+    setControlMode(mode);
 
     if (mode !== 'annotate') {
       onLeaveAnnotate?.();

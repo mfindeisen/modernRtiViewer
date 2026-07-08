@@ -55,10 +55,11 @@ export function useAnnotations({
 
   function syncOverlaySize() {
     const overlay = getOverlayEl();
-    if (!overlay) return;
-    const { width, height } = overlay.getBoundingClientRect();
-    const w = Math.round(width) || 1;
-    const h = Math.round(height) || 1;
+    const rect = overlay?.getBoundingClientRect()
+      ?? renderer.value?.domElement.getBoundingClientRect();
+    if (!rect) return;
+    const w = Math.round(rect.width) || 1;
+    const h = Math.round(rect.height) || 1;
     if (overlaySize.value.w !== w || overlaySize.value.h !== h) {
       overlaySize.value = { w, h };
     }

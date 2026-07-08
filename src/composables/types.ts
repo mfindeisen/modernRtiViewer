@@ -42,7 +42,7 @@ export interface UseRtiInteractionOptions {
   container: Ref<HTMLElement | null>;
   getRenderer: () => THREE.WebGLRenderer | null | undefined;
   getCompassEl?: () => HTMLElement | undefined;
-  setControlsEnabled: (enabled: boolean) => void;
+  setControlMode: (mode: ViewerMode) => void;
   onLeaveAnnotate?: () => void;
   onLeaveWhiteBalance?: () => void;
   onWhiteBalancePick?: (e: PointerEvent) => void;

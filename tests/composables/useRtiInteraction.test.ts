@@ -9,7 +9,7 @@ describe('useRtiInteraction', () => {
   let currentMode: Ref<ViewerMode>;
   let lightDir: Ref<THREE.Vector3>;
   let container: Ref<HTMLElement>;
-  let setControlsEnabled: ReturnType<typeof vi.fn>;
+  let setControlMode: ReturnType<typeof vi.fn>;
   let onLeaveAnnotate: ReturnType<typeof vi.fn>;
   let onLeaveWhiteBalance: ReturnType<typeof vi.fn>;
   let onWhiteBalancePick: ReturnType<typeof vi.fn>;
@@ -19,7 +19,7 @@ describe('useRtiInteraction', () => {
     lightDir = ref(mockVector3(0, 0, 1));
     container = ref(document.createElement('div'));
     document.body.appendChild(container.value);
-    setControlsEnabled = vi.fn();
+    setControlMode = vi.fn();
     onLeaveAnnotate = vi.fn();
     onLeaveWhiteBalance = vi.fn();
     onWhiteBalancePick = vi.fn();
@@ -33,21 +33,24 @@ describe('useRtiInteraction', () => {
       container,
       getRenderer: () => ({ domElement: canvas } as unknown as THREE.WebGLRenderer),
       getCompassEl: () => undefined,
-      setControlsEnabled: setControlsEnabled as (enabled: boolean) => void,
+      setControlMode: setControlMode as (mode: ViewerMode) => void,
       onLeaveAnnotate: onLeaveAnnotate as () => void,
       onLeaveWhiteBalance: onLeaveWhiteBalance as () => void,
       onWhiteBalancePick: onWhiteBalancePick as (e: PointerEvent) => void,
     });
   }
 
-  it('enables pan controls only in pan mode', () => {
+  it('enables full controls in pan mode and zoom-only in white balance mode', () => {
     const { setMode } = createInteraction();
 
     setMode('light');
-    expect(setControlsEnabled).toHaveBeenCalledWith(false);
+    expect(setControlMode).toHaveBeenCalledWith('light');
+
+    setMode('whitebalance');
+    expect(setControlMode).toHaveBeenCalledWith('whitebalance');
 
     setMode('pan');
-    expect(setControlsEnabled).toHaveBeenCalledWith(true);
+    expect(setControlMode).toHaveBeenCalledWith('pan');
   });
 
   it('clears annotate and white balance state when leaving those modes', () => {
