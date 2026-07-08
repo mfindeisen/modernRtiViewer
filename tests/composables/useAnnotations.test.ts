@@ -112,4 +112,51 @@ describe('useAnnotations', () => {
 
     expect(shapeMenuOpen.value).toBe(false);
   });
+
+  it('forwards wheel events to the viewer canvas in pan mode', () => {
+    const canvas = document.createElement('canvas');
+    const dispatchEvent = vi.spyOn(canvas, 'dispatchEvent');
+    const preventDefault = vi.fn();
+    const { onAnnotationWheel } = createAnnotations({
+      renderer: ref({ domElement: canvas }),
+    });
+
+    onAnnotationWheel({
+      deltaX: 0,
+      deltaY: -120,
+      deltaZ: 0,
+      deltaMode: 0,
+      clientX: 10,
+      clientY: 20,
+      screenX: 10,
+      screenY: 20,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+      preventDefault,
+    } as unknown as WheelEvent);
+
+    expect(dispatchEvent).toHaveBeenCalled();
+    const forwarded = dispatchEvent.mock.calls.find(([event]) => event instanceof WheelEvent)?.[0];
+    expect(forwarded).toBeInstanceOf(WheelEvent);
+    expect((forwarded as WheelEvent).deltaY).toBe(-120);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores wheel events outside pan mode', () => {
+    currentMode.value = 'annotate';
+    const canvas = document.createElement('canvas');
+    const dispatchEvent = vi.spyOn(canvas, 'dispatchEvent');
+    const { onAnnotationWheel } = createAnnotations({
+      renderer: ref({ domElement: canvas }),
+    });
+
+    onAnnotationWheel({
+      deltaY: -120,
+      preventDefault: vi.fn(),
+    } as unknown as WheelEvent);
+
+    expect(dispatchEvent).not.toHaveBeenCalled();
+  });
 });

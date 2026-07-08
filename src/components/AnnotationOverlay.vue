@@ -11,6 +11,7 @@
     @pointermove="emit('pointermove', $event)"
     @pointerup="emit('pointerup', $event)"
     @pointercancel="emit('pointerup', $event)"
+    @wheel="emit('wheel', $event)"
   >
     <g
       v-for="shape in shapes"
@@ -114,6 +115,7 @@ const emit = defineEmits<{
   pointermove: [event: PointerEvent];
   pointerup: [event: PointerEvent];
   'shape-click': [shape: OverlayShape];
+  wheel: [event: WheelEvent];
 }>();
 
 const overlayEl = ref(null);

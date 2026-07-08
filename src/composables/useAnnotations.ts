@@ -171,6 +171,31 @@ export function useAnnotations({
     onClick(shape.ann);
   }
 
+  function onAnnotationWheel(e: WheelEvent) {
+    if (currentMode.value !== 'pan') return;
+    const canvas = renderer.value?.domElement;
+    if (!canvas) return;
+    canvas.dispatchEvent(
+      new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        deltaZ: e.deltaZ,
+        deltaMode: e.deltaMode,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        screenX: e.screenX,
+        screenY: e.screenY,
+        ctrlKey: e.ctrlKey,
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey,
+      }),
+    );
+    e.preventDefault();
+  }
+
   function finishAnnotation(type: string, geometry: Record<string, unknown>) {
     onCreate({
       type,
@@ -283,5 +308,6 @@ export function useAnnotations({
     onAnnotationPointerDown,
     onAnnotationPointerMove,
     onAnnotationPointerUp,
+    onAnnotationWheel,
   };
 }

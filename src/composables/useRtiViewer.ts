@@ -113,6 +113,7 @@ export function useRtiViewer({
     onAnnotationPointerDown,
     onAnnotationPointerMove,
     onAnnotationPointerUp,
+    onAnnotationWheel,
   } = annotations;
 
   const whiteBalance = useWhiteBalance({
@@ -302,6 +303,7 @@ export function useRtiViewer({
     onAnnotationPointerDown,
     onAnnotationPointerMove,
     onAnnotationPointerUp,
+    onAnnotationWheel,
     selectAnnotationColor,
     toggleAnnotateMode,
     selectAnnotationShape,
