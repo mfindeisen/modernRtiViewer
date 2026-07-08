@@ -5,7 +5,6 @@ import ViewerSidebar from '@/components/ViewerSidebar.vue';
 const defaultProps = {
   currentMode: 'pan',
   renderMode: 0,
-  specularExponent: 10,
   annotationEnabled: false,
   annotationShape: 'circle',
   annotationColor: '#f59e0b',
@@ -36,6 +35,7 @@ describe('ViewerSidebar', () => {
     const wrapper = mount(ViewerSidebar, {
       props: { ...defaultProps, rtiType: 5 },
     });
-    expect(wrapper.text()).toContain('Latent Map');
+    const labels = wrapper.findAll('button').map((button) => button.attributes('aria-label'));
+    expect(labels).toContain('Latent Map');
   });
 });

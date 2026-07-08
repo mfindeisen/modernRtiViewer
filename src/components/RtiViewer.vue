@@ -1,11 +1,10 @@
 <template>
-  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-[49rem] bg-slate-900 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700">
 
     <ViewerSidebar
       ref="sidebarComponentRef"
       :current-mode="currentMode"
       :render-mode="renderMode"
-      :specular-exponent="specularExponent"
       :annotation-enabled="annotationEnabled"
       :annotation-shape="annotationShape"
       :annotation-color="annotationColor"
@@ -20,7 +19,6 @@
       @select-annotation-color="selectAnnotationColor"
       @toggle-white-balance="toggleWhiteBalanceMode"
       @set-render-mode="setRenderMode"
-      @update:specular-exponent="onSpecularExponentChange"
       @toggle-fullscreen="toggleFullscreen"
       @export-image="exportImage"
       @copy-link="copyLink"
@@ -36,10 +34,11 @@
       @copy="executeCopyLink"
     />
 
-    <div class="flex-1 relative overflow-hidden" ref="containerWrapper">
-      <div ref="container" class="absolute inset-0"></div>
+    <div class="flex-1 relative overflow-hidden rounded-r-xl" ref="containerWrapper">
+      <div ref="container" class="absolute inset-0 z-0"></div>
 
       <AnnotationOverlay
+        ref="overlayComponentRef"
         :visible="annotationEnabled && !loading"
         :interactive="currentMode === 'annotate'"
         :shapes="overlayShapes"
@@ -49,6 +48,7 @@
         @pointerdown="onAnnotationPointerDown"
         @pointermove="onAnnotationPointerMove"
         @pointerup="onAnnotationPointerUp"
+        @wheel="onAnnotationWheel"
         @shape-click="onShapeClick"
       />
 
@@ -74,6 +74,14 @@
         @reset="resetWhiteBalance"
       />
 
+      <ViewerGlossyPanel
+        :visible="renderMode === 1"
+        :loading="loading"
+        :specular-exponent="specularExponent"
+        :stack-below-white-balance="(currentMode === 'whitebalance' || whiteBalanceActive) && !loading"
+        @update:specular-exponent="onSpecularExponentChange"
+      />
+
       <LightCompass ref="compassComponentRef" :light-dir="lightDir" />
     </div>
   </div>
@@ -85,6 +93,7 @@ import ViewerSidebar from './ViewerSidebar.vue';
 import ViewerInfoModal from './ViewerInfoModal.vue';
 import ViewerShareModal from './ViewerShareModal.vue';
 import ViewerWhiteBalancePanel from './ViewerWhiteBalancePanel.vue';
+import ViewerGlossyPanel from './ViewerGlossyPanel.vue';
 import LightCompass from './LightCompass.vue';
 import AnnotationOverlay from './AnnotationOverlay.vue';
 import { useRtiViewer } from '../composables/useRtiViewer.js';
@@ -141,6 +150,7 @@ const {
   onSpecularExponentChange,
   overlayShapes,
   overlaySize,
+  overlayComponentRef,
   annotationShape,
   annotationColor,
   shapeMenuOpen,
@@ -151,6 +161,7 @@ const {
   onAnnotationPointerDown,
   onAnnotationPointerMove,
   onAnnotationPointerUp,
+  onAnnotationWheel,
   selectAnnotationColor,
   toggleAnnotateMode,
   selectAnnotationShape,
