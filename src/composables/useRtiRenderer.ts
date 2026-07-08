@@ -226,6 +226,22 @@ export function useRtiRenderer({
     if (controls.value) controls.value.enabled = enabled;
   }
 
+  function setControlMode(mode: import('./types.js').ViewerMode) {
+    const c = controls.value;
+    if (!c) return;
+    if (mode === 'pan') {
+      c.enabled = true;
+      c.enablePan = true;
+      c.enableZoom = true;
+    } else if (mode === 'whitebalance') {
+      c.enabled = true;
+      c.enablePan = false;
+      c.enableZoom = true;
+    } else {
+      c.enabled = false;
+    }
+  }
+
   function updateTiles() {
     if (!quadtree.value || !camera.value || !renderer.value || !scene.value) return;
 
@@ -355,6 +371,7 @@ export function useRtiRenderer({
     dispose,
     resize,
     setControlsEnabled,
+    setControlMode,
     setRenderModeOnMeshes,
     updateSpecularOnMeshes,
     updateColorGainOnMeshes,
