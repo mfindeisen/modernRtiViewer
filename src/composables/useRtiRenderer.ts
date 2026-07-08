@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { QuadtreeManager } from '../lib/QuadtreeManager';
+import { computeFitToViewZoom } from '../lib/cameraFit.js';
 import { parseViewHash } from '../lib/viewerUrl.js';
 import { loadRtiInfo } from '../lib/rtiInfoLoader.js';
 import { openTiffDataset } from '../lib/openTiffDataset.js';
@@ -122,6 +123,8 @@ export function useRtiRenderer({
       newCamera.updateProjectionMatrix();
     } else {
       newCamera.position.set(0, 0, 10);
+      newCamera.zoom = computeFitToViewZoom(width, height, rti.width, rti.height);
+      newCamera.updateProjectionMatrix();
     }
 
     const newRenderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
