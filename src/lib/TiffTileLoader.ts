@@ -24,10 +24,15 @@ export class TiffTileLoader {
   rtiType = 4;
   numCoeffs = 1;
   samplesPerPixel = 1;
+  /** Power-of-two grid size (matches QuadtreeManager.maxSize). */
+  gridSize = 1;
+  fullWidth = 1;
+  fullHeight = 1;
 
   constructor(url: string) {
     this.url = url;
-    this.pool = new Pool();
+    // Limit concurrent tile decodes to avoid flooding the server with range requests.
+    this.pool = new Pool(2);
   }
 
   /**
@@ -102,6 +107,9 @@ export class TiffTileLoader {
     this.numCoeffs = numCoeffs;
     this.samplesPerPixel = samplesPerPixel;
     this.rtiType = type;
+    this.fullWidth = width;
+    this.fullHeight = height;
+    this.gridSize = 2 ** Math.ceil(Math.log2(Math.max(width, height)));
 
     this.info = {
       type,
@@ -127,26 +135,37 @@ export class TiffTileLoader {
    * TIFF IFDs: IFD 0 = full res (highest), IFD n = lowest res.
    */
   _tiffLevelForNodeLevel(nodeLevel: number, nLevels: number) {
-    // Node level 0 = coarsest, node level nLevels-1 = finest
-    // TIFF IFD 0 = finest, IFD nLevels-1 = coarsest
-    return Math.max(0, nLevels - 1 - nodeLevel);
+    const ifdCount = this.images.length;
+    if (ifdCount <= 1 || nLevels <= 1) return 0;
+    const finest = nLevels - 1;
+    const t = nodeLevel / finest;
+    return Math.max(0, Math.min(ifdCount - 1, Math.round((1 - t) * (ifdCount - 1))));
   }
 
-  /** Map a quadtree node box to pixel coordinates at a given TIFF IFD index. */
+  /**
+   * Map a quadtree node box to pixel coordinates at a given TIFF IFD index.
+   * Always uses the same power-of-two grid as QuadtreeManager, then scales to IFD size.
+   */
   _windowForNode(node: QuadtreeNode, tiffLevel: number) {
     const image = this.images[Math.min(tiffLevel, this.images.length - 1)];
     const imgWidth = image.getWidth();
     const imgHeight = image.getHeight();
 
-    const maxDim = Math.max(imgWidth, imgHeight);
-    const levelMaxSize = Math.pow(2, Math.ceil(Math.log2(maxDim)));
-    const woffset = (levelMaxSize - imgWidth) / 2.0;
-    const hoffset = (levelMaxSize - imgHeight) / 2.0;
+    const woffset = (this.gridSize - this.fullWidth) / 2.0;
+    const hoffset = (this.gridSize - this.fullHeight) / 2.0;
 
-    const x0 = Math.max(0, Math.floor(node.box!.minX * levelMaxSize - woffset));
-    const y0 = Math.max(0, Math.floor((1.0 - node.box!.maxY) * levelMaxSize - hoffset));
-    const x1 = Math.min(imgWidth, Math.ceil(node.box!.maxX * levelMaxSize - woffset));
-    const y1 = Math.min(imgHeight, Math.ceil((1.0 - node.box!.minY) * levelMaxSize - hoffset));
+    const fullX0 = node.box!.minX * this.gridSize - woffset;
+    const fullY0 = (1.0 - node.box!.maxY) * this.gridSize - hoffset;
+    const fullX1 = node.box!.maxX * this.gridSize - woffset;
+    const fullY1 = (1.0 - node.box!.minY) * this.gridSize - hoffset;
+
+    const scaleX = imgWidth / this.fullWidth;
+    const scaleY = imgHeight / this.fullHeight;
+
+    const x0 = Math.max(0, Math.floor(fullX0 * scaleX));
+    const y0 = Math.max(0, Math.floor(fullY0 * scaleY));
+    const x1 = Math.min(imgWidth, Math.ceil(fullX1 * scaleX));
+    const y1 = Math.min(imgHeight, Math.ceil(fullY1 * scaleY));
 
     return { image, x0, y0, x1, y1, tileW: x1 - x0, tileH: y1 - y0 };
   }
@@ -165,6 +184,21 @@ export class TiffTileLoader {
       ({ image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel));
     }
 
+    // Node still spans multiple internal tiles at the coarsest IFD — read the exact window.
+    if (tileW > internalTileSize || tileH > internalTileSize) {
+      return {
+        image,
+        readX0: x0,
+        readY0: y0,
+        readX1: x1,
+        readY1: y1,
+        cropX0: 0,
+        cropY0: 0,
+        tileW,
+        tileH,
+      };
+    }
+
     // Align to one internal tile so geotiff.js fetches a single compressed block.
     const snapX0 = Math.floor(x0 / internalTileSize) * internalTileSize;
     const snapY0 = Math.floor(y0 / internalTileSize) * internalTileSize;
@@ -173,6 +207,21 @@ export class TiffTileLoader {
 
     const cropX0 = x0 - snapX0;
     const cropY0 = y0 - snapY0;
+
+    // Node window crosses tile boundary — read exact pixels instead of a partial snap.
+    if (x1 > snapX1 || y1 > snapY1) {
+      return {
+        image,
+        readX0: x0,
+        readY0: y0,
+        readX1: x1,
+        readY1: y1,
+        cropX0: 0,
+        cropY0: 0,
+        tileW,
+        tileH,
+      };
+    }
 
     return {
       image,
@@ -216,9 +265,11 @@ export class TiffTileLoader {
       pool: this.pool,
     })) as ArrayLike<number>[];
 
-    const sample = (channel: number, idx: number) => Number(rasters[channel][idx]);
-    const numChannels = this.samplesPerPixel;
-    const pixelCount = tileW * tileH;
+    const sample = (channel: number, idx: number) => {
+      const band = rasters[channel];
+      if (!band || idx < 0 || idx >= band.length) return 0;
+      return Math.min(255, Math.max(0, Math.round(Number(band[idx]))));
+    };
 
     // Build one DataTexture per shader layer
     // The shader expects each layer as an RGB texture
