@@ -27,6 +27,7 @@ export interface UseRtiViewerOptions {
     shareUrl?: string;
     debug?: string;
     annotationEnabled?: boolean;
+    tileFormat?: string;
   };
   emit: (event: 'annotation-create' | 'rti-loaded' | 'annotation-click', ...args: unknown[]) => void;
   rootWrapper: Ref<HTMLElement | null>;
@@ -71,6 +72,7 @@ export interface UseRtiRendererOptions {
   containerWrapper: Ref<HTMLElement | null>;
   container: Ref<HTMLElement | null>;
   url: Ref<string>;
+  tileFormat?: Ref<string | undefined>;
   lightDir: Ref<THREE.Vector3>;
   renderMode: Ref<number>;
   specularExponent: Ref<number>;

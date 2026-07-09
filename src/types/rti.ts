@@ -8,6 +8,7 @@ export interface RtiInfo {
   height: number;
   tileSize: number;
   layerCount: number;
+  format?: string;
   bias?: number[];
   scale?: number[];
   weights?: NeuralWeights;

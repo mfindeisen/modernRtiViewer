@@ -4,7 +4,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { QuadtreeManager } from '../lib/QuadtreeManager';
 import { computeFitToViewZoom } from '../lib/cameraFit.js';
 import { parseViewHash } from '../lib/viewerUrl.js';
-import { loadRtiInfo } from '../lib/rtiInfoLoader.js';
+import { loadRtiInfo, normalizeTileFormat } from '../lib/rtiInfoLoader.js';
 import { openTiffDataset } from '../lib/openTiffDataset.js';
 import { createTextureCache } from '../lib/textureCache.js';
 import { createMeshUniformSync } from '../lib/meshUniforms.js';
@@ -17,6 +17,7 @@ export function useRtiRenderer({
   containerWrapper,
   container,
   url,
+  tileFormat,
   lightDir,
   renderMode,
   specularExponent,
@@ -71,6 +72,9 @@ export function useRtiRenderer({
         return info;
       },
     });
+    if (!info.format && tileFormat?.value) {
+      info.format = normalizeTileFormat(tileFormat.value);
+    }
     rtiInfo.value = info;
     return info;
   }

@@ -118,6 +118,11 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  tileFormat: {
+    type: String,
+    required: false,
+    default: '',
+  },
 });
 
 const emit = defineEmits(['annotation-create', 'rti-loaded', 'annotation-click']);

@@ -16,6 +16,7 @@ describe('isTiffUrl', () => {
 describe('parseRtiInfoJson', () => {
   it('maps nested rtiprep json to viewer info', () => {
     const info = parseRtiInfoJson({
+      format: 'webp',
       content: { type: 'HSH_RTI', width: 4096, height: 2048, layerCount: 9 },
       tree: { tileSize: 512 },
     });
@@ -26,6 +27,7 @@ describe('parseRtiInfoJson', () => {
       height: 2048,
       tileSize: 512,
       layerCount: 9,
+      format: 'webp',
       bias: [],
       scale: [],
     });

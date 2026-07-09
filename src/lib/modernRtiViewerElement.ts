@@ -11,9 +11,10 @@ export class ModernRtiViewerElement extends HTMLElement {
   _setUrl?: (val: string | null) => void;
   _setShareUrl?: (val: string | null) => void;
   _setAnnotationEnabled?: (val: boolean) => void;
+  _setTileFormat?: (val: string | null) => void;
 
   static get observedAttributes() {
-    return ['url', 'share-url', 'annotation-enabled'];
+    return ['url', 'share-url', 'annotation-enabled', 'tile-format'];
   }
 
   connectedCallback() {
@@ -30,6 +31,7 @@ export class ModernRtiViewerElement extends HTMLElement {
         const url = ref(host.getAttribute('url') || '');
         const shareUrl = ref(host.getAttribute('share-url') || '');
         const annotationEnabled = ref(parseAnnotationEnabledAttr(host.getAttribute('annotation-enabled')));
+        const tileFormat = ref(host.getAttribute('tile-format') || '');
 
         host._setUrl = (val) => {
           url.value = val ?? '';
@@ -40,11 +42,15 @@ export class ModernRtiViewerElement extends HTMLElement {
         host._setAnnotationEnabled = (val) => {
           annotationEnabled.value = val;
         };
+        host._setTileFormat = (val) => {
+          tileFormat.value = val ?? '';
+        };
 
         return () => h(RtiViewer, {
           url: url.value,
           shareUrl: shareUrl.value,
           annotationEnabled: annotationEnabled.value,
+          tileFormat: tileFormat.value,
           onAnnotationCreate(payload: AnnotationCreatePayload) {
             host.dispatchEvent(new CustomEvent('annotation-create', { detail: payload, bubbles: true }));
           },
@@ -71,6 +77,10 @@ export class ModernRtiViewerElement extends HTMLElement {
     }
     if (name === 'annotation-enabled') {
       this._setAnnotationEnabled?.(parseAnnotationEnabledAttr(newValue));
+      return;
+    }
+    if (name === 'tile-format') {
+      this._setTileFormat?.(newValue);
     }
   }
 
@@ -82,6 +92,7 @@ export class ModernRtiViewerElement extends HTMLElement {
     this._setUrl = undefined;
     this._setShareUrl = undefined;
     this._setAnnotationEnabled = undefined;
+    this._setTileFormat = undefined;
   }
 }
 

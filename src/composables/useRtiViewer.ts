@@ -47,6 +47,7 @@ export function useRtiViewer({
     containerWrapper,
     container,
     url: toRef(props, 'url'),
+    tileFormat: toRef(props, 'tileFormat'),
     lightDir,
     renderMode,
     specularExponent,

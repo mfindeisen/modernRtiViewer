@@ -6,6 +6,7 @@ const XML_TYPE_MAP: Record<string, number> = { HSH: 1, HSH_RTI: 1, LRGB_PTM: 2, 
 export function parseRtiInfoJson(json: Record<string, unknown>): RtiInfo {
   const content = (json.content || json) as Record<string, unknown>;
   const tree = (json.tree || json) as Record<string, unknown>;
+  const rawFormat = typeof json.format === 'string' ? json.format : 'jpg';
 
   return {
     type: JSON_TYPE_MAP[String(content.type)] ?? 4,
@@ -13,10 +14,19 @@ export function parseRtiInfoJson(json: Record<string, unknown>): RtiInfo {
     height: content.height as number,
     tileSize: tree.tileSize as number,
     layerCount: (content.layerCount ?? content.coefficients ?? 1) as number,
+    format: normalizeTileFormat(rawFormat),
     bias: (content.bias ?? []) as number[],
     scale: (content.scale ?? []) as number[],
   };
 }
+
+function normalizeTileFormat(format: string): string {
+  const value = format.toLowerCase().trim();
+  if (value === 'png' || value === 'webp') return value;
+  return 'jpg';
+}
+
+export { normalizeTileFormat };
 
 export function parseRtiInfoXml(xmlText: string): RtiInfo {
   const parser = new DOMParser();
@@ -31,6 +41,8 @@ export function parseRtiInfoXml(xmlText: string): RtiInfo {
 
   if (contentEl && sizeEl) {
     const contentType = contentEl.getAttribute('type') ?? '';
+    const multiResEl = xmlDoc.getElementsByTagName('MultiRes')[0];
+    const legacyFormat = multiResEl?.getAttribute('format');
     const treeEl = xmlDoc.getElementsByTagName('Tree')[0];
     let tileSize = 256;
     if (treeEl?.textContent) {
@@ -52,6 +64,7 @@ export function parseRtiInfoXml(xmlText: string): RtiInfo {
       height: parseInt(sizeEl.getAttribute('height') ?? '0', 10),
       tileSize,
       layerCount: numLayers,
+      format: legacyFormat === '1' ? 'png' : 'jpg',
       bias,
       scale,
     };
