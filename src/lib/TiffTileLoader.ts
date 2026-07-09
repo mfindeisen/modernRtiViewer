@@ -132,6 +132,61 @@ export class TiffTileLoader {
     return Math.max(0, nLevels - 1 - nodeLevel);
   }
 
+  /** Map a quadtree node box to pixel coordinates at a given TIFF IFD index. */
+  _windowForNode(node: QuadtreeNode, tiffLevel: number) {
+    const image = this.images[Math.min(tiffLevel, this.images.length - 1)];
+    const imgWidth = image.getWidth();
+    const imgHeight = image.getHeight();
+
+    const maxDim = Math.max(imgWidth, imgHeight);
+    const levelMaxSize = Math.pow(2, Math.ceil(Math.log2(maxDim)));
+    const woffset = (levelMaxSize - imgWidth) / 2.0;
+    const hoffset = (levelMaxSize - imgHeight) / 2.0;
+
+    const x0 = Math.max(0, Math.floor(node.box!.minX * levelMaxSize - woffset));
+    const y0 = Math.max(0, Math.floor((1.0 - node.box!.maxY) * levelMaxSize - hoffset));
+    const x1 = Math.min(imgWidth, Math.ceil(node.box!.maxX * levelMaxSize - woffset));
+    const y1 = Math.min(imgHeight, Math.ceil((1.0 - node.box!.minY) * levelMaxSize - hoffset));
+
+    return { image, x0, y0, x1, y1, tileW: x1 - x0, tileH: y1 - y0 };
+  }
+
+  /**
+   * Pick the coarsest IFD where the node fits in one internal TIFF tile, then snap
+   * the read window to a single 256×256 tile boundary to avoid multi-tile fetches.
+   */
+  _selectReadWindow(node: QuadtreeNode, nLevels: number) {
+    let tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
+    let { image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel);
+    const internalTileSize = image.getTileWidth ? image.getTileWidth() : 256;
+
+    while ((tileW > internalTileSize || tileH > internalTileSize) && tiffLevel < this.images.length - 1) {
+      tiffLevel++;
+      ({ image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel));
+    }
+
+    // Align to one internal tile so geotiff.js fetches a single compressed block.
+    const snapX0 = Math.floor(x0 / internalTileSize) * internalTileSize;
+    const snapY0 = Math.floor(y0 / internalTileSize) * internalTileSize;
+    const snapX1 = Math.min(image.getWidth(), snapX0 + internalTileSize);
+    const snapY1 = Math.min(image.getHeight(), snapY0 + internalTileSize);
+
+    const cropX0 = x0 - snapX0;
+    const cropY0 = y0 - snapY0;
+
+    return {
+      image,
+      readX0: snapX0,
+      readY0: snapY0,
+      readX1: snapX1,
+      readY1: snapY1,
+      cropX0,
+      cropY0,
+      tileW,
+      tileH,
+    };
+  }
+
   /**
    * Load a single tile for a given quadtree node.
    * Returns an array of THREE.DataTexture objects — one per "layer" expected by the shader.
@@ -144,33 +199,19 @@ export class TiffTileLoader {
    */
   async loadTileTextures(node: QuadtreeNode, nLevels: number, _tileSize: number) {
     if (!node.box) return null;
-    const tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
-    const image = this.images[Math.min(tiffLevel, this.images.length - 1)];
 
-    const imgWidth = image.getWidth();
-    const imgHeight = image.getHeight();
-
-    // Convert normalized node box [0..1] to pixel coordinates at this level.
-    // The quadtree nodes are structured on a padded maxSize square box.
-    const maxDim = Math.max(imgWidth, imgHeight);
-    const levelMaxSize = Math.pow(2, Math.ceil(Math.log2(maxDim)));
-    const woffset = (levelMaxSize - imgWidth) / 2.0;
-    const hoffset = (levelMaxSize - imgHeight) / 2.0;
-
-    const x0 = Math.max(0, Math.floor(node.box.minX * levelMaxSize - woffset));
-    const y0 = Math.max(0, Math.floor((1.0 - node.box.maxY) * levelMaxSize - hoffset)); // Y-flip: TIFF origin is top-left
-    const x1 = Math.min(imgWidth, Math.ceil(node.box.maxX * levelMaxSize - woffset));
-    const y1 = Math.min(imgHeight, Math.ceil((1.0 - node.box.minY) * levelMaxSize - hoffset));
-
-    const tileW = x1 - x0;
-    const tileH = y1 - y0;
+    const { image, readX0, readY0, readX1, readY1, cropX0, cropY0, tileW, tileH } =
+      this._selectReadWindow(node, nLevels);
 
     if (tileW <= 0 || tileH <= 0) return null;
+
+    const readW = readX1 - readX0;
+    const readH = readY1 - readY0;
 
     // Fetch raw interleaved uint8 data for this tile window
     // geotiff.js readRasters returns one Float32Array per sample
     const rasters = (await image.readRasters({
-      window: [x0, y0, x1, y1],
+      window: [readX0, readY0, readX1, readY1],
       interleave: false,
       pool: this.pool,
     })) as ArrayLike<number>[];
@@ -187,7 +228,7 @@ export class TiffTileLoader {
       const buf = new Uint8Array(tileW * tileH * 4);
 
       for (let y = 0; y < tileH; y++) {
-        const srcRowStart = y * tileW;
+        const srcRowStart = (cropY0 + y) * readW + cropX0;
         const destRowStart = (tileH - 1 - y) * tileW;
         for (let x = 0; x < tileW; x++) {
           const srcIdx = srcRowStart + x;
