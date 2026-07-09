@@ -1,7 +1,7 @@
 <template>
   <div
     ref="compassEl"
-    class="absolute bottom-6 left-6 w-24 h-24 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center z-20 shadow-xl overflow-hidden cursor-crosshair touch-none"
+    class="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] left-[max(1.5rem,env(safe-area-inset-left,0px))] w-24 h-24 rounded-full bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center z-20 shadow-xl overflow-hidden cursor-crosshair touch-none"
   >
     <div class="absolute inset-0 rounded-full border-2 border-white/5 m-2 pointer-events-none"></div>
     <div class="absolute w-full h-px bg-white/10 pointer-events-none"></div>

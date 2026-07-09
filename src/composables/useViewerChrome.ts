@@ -129,9 +129,18 @@ export function useViewerChrome({
     const sidebar = sidebarComponentRef.value?.sidebarEl;
     const root = rootWrapper.value;
     if (!sidebar || !root) return;
+    const host = root.closest('modern-rti-viewer') as HTMLElement | null;
+
+    // On mobile the parent flex chain caps height to the viewport; forcing
+    // sidebar scrollHeight as min-height clips the toolbar and light compass.
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      root.style.minHeight = '';
+      if (host) host.style.minHeight = '';
+      return;
+    }
+
     const minH = sidebar.scrollHeight;
     root.style.minHeight = `${minH}px`;
-    const host = root.closest('modern-rti-viewer');
     if (host) host.style.minHeight = `${minH}px`;
   }
 

@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700">
+  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-0 lg:min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700">
 
     <ViewerSidebar
       ref="sidebarComponentRef"

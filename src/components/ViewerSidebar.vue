@@ -1,5 +1,5 @@
 <template>
-  <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl">
+  <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:overflow-y-auto max-lg:overflow-x-hidden">
     <div class="flex flex-col items-center py-4 w-full">
       <SidebarTooltip title="Pan & Zoom" description="Navigate the image">
         <button aria-label="Pan & Zoom" @click="emit('set-mode', 'pan')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'pan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">

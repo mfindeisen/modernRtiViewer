@@ -296,9 +296,8 @@ export function useRtiRenderer({
       }
     }
 
-    for (const { node, worldBox, isFallback } of visibleNodes) {
+    for (const { node, worldBox } of visibleNodes) {
       if (!tileMeshes.has(node.id)) {
-        if (isFallback && rtiInfo.value?.isTiff) continue;
         loadTileMesh(node, worldBox);
       } else {
         syncMeshUniforms(tileMeshes.get(node.id));
