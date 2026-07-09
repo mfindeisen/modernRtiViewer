@@ -28,6 +28,8 @@ export class TiffTileLoader {
   gridSize = 1;
   fullWidth = 1;
   fullHeight = 1;
+  /** Serialize COG byte fetches so geotiff BlockedSource cannot merge parallel ranges. */
+  private fetchChain: Promise<unknown> = Promise.resolve();
 
   constructor(url: string) {
     this.url = url;
@@ -40,8 +42,7 @@ export class TiffTileLoader {
    * Returns an rtiInfo-compatible object.
    */
   async open() {
-    // blockSize:null avoids BlockedSource merging adjacent byte ranges into multi-MB HTTP fetches
-    this.tiff = await fromUrl(this.url, { blockSize: null, cache: true });
+    this.tiff = await fromUrl(this.url, { cache: true });
     const imageCount = await this.tiff.getImageCount();
 
     this.images = [];
@@ -187,15 +188,23 @@ export class TiffTileLoader {
     return { image, x0, y0, x1, y1, tileW, tileH };
   }
 
+  /** Run COG fetches one at a time — BlockedSource batches parallel slice requests into huge ranges. */
+  private runSerialized<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.fetchChain.then(task);
+    this.fetchChain = run.catch(() => {});
+    return run;
+  }
+
   /** Fetch one internal COG tile by grid index (exact byte range from TileOffsets). */
   async _readInternalTile(
     image: TiffTileLoader['images'][number],
     tx: number,
     ty: number,
   ) {
-    const tile = await image.getTileOrStrip(tx, ty, 0, this.pool) as
-      | ArrayBuffer
-      | { data: ArrayBuffer | ArrayLike<number> };
+    const tile = await this.runSerialized(() =>
+      image.getTileOrStrip(tx, ty, 0, this.pool),
+    ) as ArrayBuffer | { data: ArrayBuffer | ArrayBufferView | ArrayLike<number> };
+
     const raw = tile instanceof ArrayBuffer ? tile : tile.data;
     if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
     if (ArrayBuffer.isView(raw)) {
