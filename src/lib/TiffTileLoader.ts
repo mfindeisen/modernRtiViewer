@@ -40,7 +40,8 @@ export class TiffTileLoader {
    * Returns an rtiInfo-compatible object.
    */
   async open() {
-    this.tiff = await fromUrl(this.url);
+    // blockSize:null avoids BlockedSource merging adjacent byte ranges into multi-MB HTTP fetches
+    this.tiff = await fromUrl(this.url, { blockSize: null, cache: true });
     const imageCount = await this.tiff.getImageCount();
 
     this.images = [];
@@ -186,40 +187,26 @@ export class TiffTileLoader {
     return { image, x0, y0, x1, y1, tileW, tileH };
   }
 
-  /** List 256×256 internal COG tiles overlapping a pixel window. */
-  _internalTileWindows(
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
+  /** Fetch one internal COG tile by grid index (exact byte range from TileOffsets). */
+  async _readInternalTile(
     image: TiffTileLoader['images'][number],
+    tx: number,
+    ty: number,
   ) {
-    const tileSize = image.getTileWidth ? image.getTileWidth() : 256;
-    const imgW = image.getWidth();
-    const imgH = image.getHeight();
-    const tx0 = Math.floor(x0 / tileSize);
-    const ty0 = Math.floor(y0 / tileSize);
-    const tx1 = Math.floor(Math.max(x0, x1 - 1) / tileSize);
-    const ty1 = Math.floor(Math.max(y0, y1 - 1) / tileSize);
-    const windows: Array<{ snapX0: number; snapY0: number; snapX1: number; snapY1: number }> = [];
-
-    for (let ty = ty0; ty <= ty1; ty++) {
-      for (let tx = tx0; tx <= tx1; tx++) {
-        windows.push({
-          snapX0: tx * tileSize,
-          snapY0: ty * tileSize,
-          snapX1: Math.min(imgW, (tx + 1) * tileSize),
-          snapY1: Math.min(imgH, (ty + 1) * tileSize),
-        });
-      }
+    const tile = await image.getTileOrStrip(tx, ty, 0, this.pool) as
+      | ArrayBuffer
+      | { data: ArrayBuffer | ArrayLike<number> };
+    const raw = tile instanceof ArrayBuffer ? tile : tile.data;
+    if (raw instanceof ArrayBuffer) return new Uint8Array(raw);
+    if (ArrayBuffer.isView(raw)) {
+      return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
     }
-
-    return windows;
+    return new Uint8Array(raw as ArrayLike<number>);
   }
 
   /**
-   * Read a pixel window by fetching each overlapping internal COG tile separately
-   * (one HTTP range request per 256×256 block) and stitching the result.
+   * Read a pixel window by fetching each overlapping internal COG tile via
+   * getTileOrStrip (one HTTP range request per compressed tile block).
    */
   async _readPixelWindow(
     image: TiffTileLoader['images'][number],
@@ -233,32 +220,36 @@ export class TiffTileLoader {
     const channels = this.samplesPerPixel;
     const out: Float32Array[] = Array.from({ length: channels }, () => new Float32Array(winW * winH));
 
-    const tileWindows = this._internalTileWindows(x0, y0, x1, y1, image);
-    await Promise.all(tileWindows.map(async ({ snapX0, snapY0, snapX1, snapY1 }) => {
-      const tileRasters = (await image.readRasters({
-        window: [snapX0, snapY0, snapX1, snapY1],
-        interleave: false,
-        pool: this.pool,
-      })) as ArrayLike<number>[];
+    const tileSize = image.getTileWidth ? image.getTileWidth() : 256;
+    const tx0 = Math.floor(x0 / tileSize);
+    const ty0 = Math.floor(y0 / tileSize);
+    const tx1 = Math.floor(Math.max(x0, x1 - 1) / tileSize);
+    const ty1 = Math.floor(Math.max(y0, y1 - 1) / tileSize);
 
-      const tileW = snapX1 - snapX0;
-      const overlapX0 = Math.max(x0, snapX0);
-      const overlapY0 = Math.max(y0, snapY0);
-      const overlapX1 = Math.min(x1, snapX1);
-      const overlapY1 = Math.min(y1, snapY1);
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        const tileBytes = await this._readInternalTile(image, tx, ty);
+        const snapX0 = tx * tileSize;
+        const snapY0 = ty * tileSize;
+        const overlapX0 = Math.max(x0, snapX0);
+        const overlapY0 = Math.max(y0, snapY0);
+        const overlapX1 = Math.min(x1, snapX0 + tileSize);
+        const overlapY1 = Math.min(y1, snapY0 + tileSize);
 
-      for (let y = overlapY0; y < overlapY1; y++) {
-        const srcRow = (y - snapY0) * tileW;
-        const destRow = (y - y0) * winW;
-        for (let x = overlapX0; x < overlapX1; x++) {
-          const srcIdx = srcRow + (x - snapX0);
-          const destIdx = destRow + (x - x0);
-          for (let c = 0; c < channels; c++) {
-            out[c][destIdx] = Number(tileRasters[c][srcIdx]);
+        for (let y = overlapY0; y < overlapY1; y++) {
+          const localY = y - snapY0;
+          const destRow = (y - y0) * winW;
+          for (let x = overlapX0; x < overlapX1; x++) {
+            const localX = x - snapX0;
+            const srcIdx = (localY * tileSize + localX) * channels;
+            const destIdx = destRow + (x - x0);
+            for (let c = 0; c < channels; c++) {
+              out[c][destIdx] = tileBytes[srcIdx + c] ?? 0;
+            }
           }
         }
       }
-    }));
+    }
 
     return out;
   }
