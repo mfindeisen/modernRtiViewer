@@ -171,8 +171,8 @@ export class TiffTileLoader {
   }
 
   /**
-   * Pick the coarsest IFD where the node fits in one internal TIFF tile, then snap
-   * the read window to a single 256×256 tile boundary to avoid multi-tile fetches.
+   * Pick an IFD where the node maps to at most one internal TIFF tile in each
+   * dimension, then read the exact node pixels (max 256x256, at most 2x2 internal tiles).
    */
   _selectReadWindow(node: QuadtreeNode, nLevels: number) {
     let tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
@@ -184,53 +184,14 @@ export class TiffTileLoader {
       ({ image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel));
     }
 
-    // Node still spans multiple internal tiles at the coarsest IFD — read the exact window.
-    if (tileW > internalTileSize || tileH > internalTileSize) {
-      return {
-        image,
-        readX0: x0,
-        readY0: y0,
-        readX1: x1,
-        readY1: y1,
-        cropX0: 0,
-        cropY0: 0,
-        tileW,
-        tileH,
-      };
-    }
-
-    // Align to one internal tile so geotiff.js fetches a single compressed block.
-    const snapX0 = Math.floor(x0 / internalTileSize) * internalTileSize;
-    const snapY0 = Math.floor(y0 / internalTileSize) * internalTileSize;
-    const snapX1 = Math.min(image.getWidth(), snapX0 + internalTileSize);
-    const snapY1 = Math.min(image.getHeight(), snapY0 + internalTileSize);
-
-    const cropX0 = x0 - snapX0;
-    const cropY0 = y0 - snapY0;
-
-    // Node window crosses tile boundary — read exact pixels instead of a partial snap.
-    if (x1 > snapX1 || y1 > snapY1) {
-      return {
-        image,
-        readX0: x0,
-        readY0: y0,
-        readX1: x1,
-        readY1: y1,
-        cropX0: 0,
-        cropY0: 0,
-        tileW,
-        tileH,
-      };
-    }
-
     return {
       image,
-      readX0: snapX0,
-      readY0: snapY0,
-      readX1: snapX1,
-      readY1: snapY1,
-      cropX0,
-      cropY0,
+      readX0: x0,
+      readY0: y0,
+      readX1: x1,
+      readY1: y1,
+      cropX0: 0,
+      cropY0: 0,
       tileW,
       tileH,
     };
