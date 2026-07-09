@@ -171,10 +171,9 @@ export class TiffTileLoader {
   }
 
   /**
-   * Pick the coarsest IFD where the node fits in one internal TIFF tile, then snap
-   * the read window to a single 256×256 tile boundary to avoid multi-tile fetches.
+   * Pick the coarsest IFD where the node fits in one internal TIFF tile dimension.
    */
-  _selectReadWindow(node: QuadtreeNode, nLevels: number) {
+  _selectNodeWindow(node: QuadtreeNode, nLevels: number) {
     let tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
     let { image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel);
     const internalTileSize = image.getTileWidth ? image.getTileWidth() : 256;
@@ -184,56 +183,84 @@ export class TiffTileLoader {
       ({ image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel));
     }
 
-    // Node still spans multiple internal tiles at the coarsest IFD — read the exact window.
-    if (tileW > internalTileSize || tileH > internalTileSize) {
-      return {
-        image,
-        readX0: x0,
-        readY0: y0,
-        readX1: x1,
-        readY1: y1,
-        cropX0: 0,
-        cropY0: 0,
-        tileW,
-        tileH,
-      };
+    return { image, x0, y0, x1, y1, tileW, tileH };
+  }
+
+  /** List 256×256 internal COG tiles overlapping a pixel window. */
+  _internalTileWindows(
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    image: TiffTileLoader['images'][number],
+  ) {
+    const tileSize = image.getTileWidth ? image.getTileWidth() : 256;
+    const imgW = image.getWidth();
+    const imgH = image.getHeight();
+    const tx0 = Math.floor(x0 / tileSize);
+    const ty0 = Math.floor(y0 / tileSize);
+    const tx1 = Math.floor(Math.max(x0, x1 - 1) / tileSize);
+    const ty1 = Math.floor(Math.max(y0, y1 - 1) / tileSize);
+    const windows: Array<{ snapX0: number; snapY0: number; snapX1: number; snapY1: number }> = [];
+
+    for (let ty = ty0; ty <= ty1; ty++) {
+      for (let tx = tx0; tx <= tx1; tx++) {
+        windows.push({
+          snapX0: tx * tileSize,
+          snapY0: ty * tileSize,
+          snapX1: Math.min(imgW, (tx + 1) * tileSize),
+          snapY1: Math.min(imgH, (ty + 1) * tileSize),
+        });
+      }
     }
 
-    // Align to one internal tile so geotiff.js fetches a single compressed block.
-    const snapX0 = Math.floor(x0 / internalTileSize) * internalTileSize;
-    const snapY0 = Math.floor(y0 / internalTileSize) * internalTileSize;
-    const snapX1 = Math.min(image.getWidth(), snapX0 + internalTileSize);
-    const snapY1 = Math.min(image.getHeight(), snapY0 + internalTileSize);
+    return windows;
+  }
 
-    const cropX0 = x0 - snapX0;
-    const cropY0 = y0 - snapY0;
+  /**
+   * Read a pixel window by fetching each overlapping internal COG tile separately
+   * (one HTTP range request per 256×256 block) and stitching the result.
+   */
+  async _readPixelWindow(
+    image: TiffTileLoader['images'][number],
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+  ) {
+    const winW = x1 - x0;
+    const winH = y1 - y0;
+    const channels = this.samplesPerPixel;
+    const out: Float32Array[] = Array.from({ length: channels }, () => new Float32Array(winW * winH));
 
-    // Node window crosses tile boundary — read exact pixels instead of a partial snap.
-    if (x1 > snapX1 || y1 > snapY1) {
-      return {
-        image,
-        readX0: x0,
-        readY0: y0,
-        readX1: x1,
-        readY1: y1,
-        cropX0: 0,
-        cropY0: 0,
-        tileW,
-        tileH,
-      };
-    }
+    const tileWindows = this._internalTileWindows(x0, y0, x1, y1, image);
+    await Promise.all(tileWindows.map(async ({ snapX0, snapY0, snapX1, snapY1 }) => {
+      const tileRasters = (await image.readRasters({
+        window: [snapX0, snapY0, snapX1, snapY1],
+        interleave: false,
+        pool: this.pool,
+      })) as ArrayLike<number>[];
 
-    return {
-      image,
-      readX0: snapX0,
-      readY0: snapY0,
-      readX1: snapX1,
-      readY1: snapY1,
-      cropX0,
-      cropY0,
-      tileW,
-      tileH,
-    };
+      const tileW = snapX1 - snapX0;
+      const overlapX0 = Math.max(x0, snapX0);
+      const overlapY0 = Math.max(y0, snapY0);
+      const overlapX1 = Math.min(x1, snapX1);
+      const overlapY1 = Math.min(y1, snapY1);
+
+      for (let y = overlapY0; y < overlapY1; y++) {
+        const srcRow = (y - snapY0) * tileW;
+        const destRow = (y - y0) * winW;
+        for (let x = overlapX0; x < overlapX1; x++) {
+          const srcIdx = srcRow + (x - snapX0);
+          const destIdx = destRow + (x - x0);
+          for (let c = 0; c < channels; c++) {
+            out[c][destIdx] = Number(tileRasters[c][srcIdx]);
+          }
+        }
+      }
+    }));
+
+    return out;
   }
 
   /**
@@ -249,21 +276,11 @@ export class TiffTileLoader {
   async loadTileTextures(node: QuadtreeNode, nLevels: number, _tileSize: number) {
     if (!node.box) return null;
 
-    const { image, readX0, readY0, readX1, readY1, cropX0, cropY0, tileW, tileH } =
-      this._selectReadWindow(node, nLevels);
+    const { image, x0, y0, x1, y1, tileW, tileH } = this._selectNodeWindow(node, nLevels);
 
     if (tileW <= 0 || tileH <= 0) return null;
 
-    const readW = readX1 - readX0;
-    const readH = readY1 - readY0;
-
-    // Fetch raw interleaved uint8 data for this tile window
-    // geotiff.js readRasters returns one Float32Array per sample
-    const rasters = (await image.readRasters({
-      window: [readX0, readY0, readX1, readY1],
-      interleave: false,
-      pool: this.pool,
-    })) as ArrayLike<number>[];
+    const rasters = await this._readPixelWindow(image, x0, y0, x1, y1);
 
     const sample = (channel: number, idx: number) => {
       const band = rasters[channel];
@@ -279,7 +296,7 @@ export class TiffTileLoader {
       const buf = new Uint8Array(tileW * tileH * 4);
 
       for (let y = 0; y < tileH; y++) {
-        const srcRowStart = (cropY0 + y) * readW + cropX0;
+        const srcRowStart = y * tileW;
         const destRowStart = (tileH - 1 - y) * tileW;
         for (let x = 0; x < tileW; x++) {
           const srcIdx = srcRowStart + x;
