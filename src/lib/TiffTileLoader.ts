@@ -85,6 +85,7 @@ export class TiffTileLoader {
     let bias = [];
     let scale = [];
     let weights = null;
+    let colorGain = null;
 
     if (description) {
       try {
@@ -100,6 +101,14 @@ export class TiffTileLoader {
         } else {
           bias = meta.bias || [];
           scale = meta.scale || [];
+        }
+        if (meta.colorGain && typeof meta.colorGain === 'object') {
+          const r = Number(meta.colorGain.r);
+          const g = Number(meta.colorGain.g);
+          const b = Number(meta.colorGain.b);
+          if ([r, g, b].every((n) => Number.isFinite(n))) {
+            colorGain = { r, g, b };
+          }
         }
       } catch (e) {
         console.warn("[TiffTileLoader] Failed to parse TIFF ImageDescription:", e);
@@ -123,6 +132,7 @@ export class TiffTileLoader {
       bias,
       scale,
       weights,
+      ...(colorGain ? { colorGain } : {}),
       // Flag to let viewer know this is TIFF mode (no separate tile files)
       isTiff: true,
     };

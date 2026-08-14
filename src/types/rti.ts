@@ -12,6 +12,7 @@ export interface RtiInfo {
   bias?: number[];
   scale?: number[];
   weights?: NeuralWeights;
+  colorGain?: ColorGain;
   numCoeffs?: number;
   isTiff?: boolean;
 }

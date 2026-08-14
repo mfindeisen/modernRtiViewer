@@ -30,7 +30,24 @@ describe('parseRtiInfoJson', () => {
       format: 'webp',
       bias: [],
       scale: [],
+      colorGain: undefined,
     });
+  });
+
+  it('reads colorGain metadata when present', () => {
+    const info = parseRtiInfoJson({
+      format: 'jpg',
+      content: {
+        type: 'HSH_RTI',
+        width: 100,
+        height: 50,
+        coefficients: 4,
+        colorGain: { r: 1.1, g: 0.95, b: 1.05 },
+      },
+      tree: { tileSize: 256 },
+    });
+
+    expect(info.colorGain).toEqual({ r: 1.1, g: 0.95, b: 1.05 });
   });
 });
 

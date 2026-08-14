@@ -17,7 +17,18 @@ export function parseRtiInfoJson(json: Record<string, unknown>): RtiInfo {
     format: normalizeTileFormat(rawFormat),
     bias: (content.bias ?? []) as number[],
     scale: (content.scale ?? []) as number[],
+    colorGain: parseColorGain(content.colorGain),
   };
+}
+
+function parseColorGain(value: unknown): { r: number; g: number; b: number } | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const gain = value as Record<string, unknown>;
+  const r = Number(gain.r);
+  const g = Number(gain.g);
+  const b = Number(gain.b);
+  if (![r, g, b].every((n) => Number.isFinite(n))) return undefined;
+  return { r, g, b };
 }
 
 function normalizeTileFormat(format: string): string {

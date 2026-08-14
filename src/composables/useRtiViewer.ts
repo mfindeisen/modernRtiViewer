@@ -223,7 +223,11 @@ export function useRtiViewer({
     initQuadtree();
     const urlView = initRenderer();
     const restoredGain = applyUrlView(urlView);
-    if (restoredGain) applyColorGain(restoredGain);
+    if (restoredGain) {
+      applyColorGain(restoredGain);
+    } else if (rtiInfo.value?.colorGain) {
+      applyColorGain(rtiInfo.value.colorGain);
+    }
     setupInteraction();
 
     loading.value = false;
