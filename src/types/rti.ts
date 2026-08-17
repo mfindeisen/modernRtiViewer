@@ -66,7 +66,7 @@ export interface ParsedViewHash {
 export type AnnotationType = 'point' | 'circle' | 'rectangle';
 
 export interface Annotation {
-  id?: string;
+  id?: string | number;
   type: AnnotationType | string;
   geometry: Record<string, unknown>;
   color?: string;
