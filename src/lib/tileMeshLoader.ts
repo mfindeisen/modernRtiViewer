@@ -21,6 +21,7 @@ interface CreateTileMeshLoaderOptions {
   syncMeshUniforms: (mesh: { material?: THREE.Material }) => void;
   getLightDir: () => THREE.Vector3;
   getColorGain: () => THREE.Vector3;
+  onTileReady?: () => void;
   debug?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function createTileMeshLoader({
   syncMeshUniforms,
   getLightDir,
   getColorGain,
+  onTileReady,
   debug = false,
 }: CreateTileMeshLoaderOptions) {
   function loadTileMesh(node: QuadtreeNode, worldBox: WorldBox) {
@@ -72,6 +74,7 @@ export function createTileMeshLoader({
       mesh.material = material;
       mesh.geometry = new THREE.PlaneGeometry(width, height);
       loadingTileIds.delete(node.id);
+      onTileReady?.();
     };
 
     const cacheKey = `${url.value}_${node.id}`;

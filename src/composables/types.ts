@@ -47,6 +47,7 @@ export interface UseRtiInteractionOptions {
   onLeaveAnnotate?: () => void;
   onLeaveWhiteBalance?: () => void;
   onWhiteBalancePick?: (e: PointerEvent) => void;
+  onLightChange?: () => void;
 }
 
 export interface UseAnnotationsOptions {

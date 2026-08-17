@@ -74,6 +74,7 @@ export function useRtiViewer({
     applyUrlView,
     exportPng,
     sampleColorAtScreen,
+    requestRender,
   } = rtiRenderer;
 
   Object.assign(meshUpdaters, {
@@ -150,6 +151,7 @@ export function useRtiViewer({
     onLeaveAnnotate: clearDrawingState,
     onLeaveWhiteBalance: clearWbFeedback,
     onWhiteBalancePick: pickWhiteBalance,
+    onLightChange: requestRender,
   });
 
   const { setMode, toggleWhiteBalanceMode, setup: setupInteraction, dispose: disposeInteraction } = interaction;
@@ -168,7 +170,10 @@ export function useRtiViewer({
     setRenderMode,
     updateSpecular,
     updateColorGain,
-    onViewRestored: updateOverlayShapes,
+    onViewRestored: () => {
+      updateOverlayShapes();
+      requestRender();
+    },
     hostHandlers: {
       onSetAnnotations: annotations.setAnnotations,
       onResize: resizeRenderer,

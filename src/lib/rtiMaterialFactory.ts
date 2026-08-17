@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { HshShaderMaterial, LrgbPtmMaterial, NeuralRtiMaterial } from './RtiShaders.js';
+import { HshShaderMaterial, LrgbPtmMaterial, NeuralRtiMaterial, RgbPtmMaterial } from './RtiShaders.js';
 import { ImageShaderMaterial } from './ImageShaderMaterial.js';
 import type { QuadtreeManager } from './QuadtreeManager.js';
 import type { RtiInfo } from '../types/rti.js';
@@ -31,9 +31,7 @@ export function createRtiMaterial({ rtiInfo, textures, lightDir, bounds, colorGa
     return LrgbPtmMaterial(textures, lightDir, rtiInfo.bias ?? [], rtiInfo.scale ?? [], bounds, colorGain);
   }
   if (rtiInfo.type === 3) {
-    throw new Error(
-      'RGB PTM datasets are not supported yet. Re-process with LRGB PTM or HSH (rtiprep default).',
-    );
+    return RgbPtmMaterial(textures, lightDir, rtiInfo.bias ?? [], rtiInfo.scale ?? [], bounds, colorGain);
   }
   return ImageShaderMaterial(textures[0], bounds, colorGain);
 }

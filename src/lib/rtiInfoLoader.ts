@@ -68,6 +68,7 @@ export function parseRtiInfoXml(xmlText: string): RtiInfo {
     const parsedType = XML_TYPE_MAP[contentType] || 2;
     let numLayers = ordlen;
     if (parsedType === 2) numLayers = 3;
+    if (parsedType === 3) numLayers = 6;
 
     return {
       type: parsedType,

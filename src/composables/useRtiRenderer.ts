@@ -37,6 +37,8 @@ export function useRtiRenderer({
   const activeMeshesCount = ref(0);
 
   let animationFrameId: number | null = null;
+  let renderLoopActive = false;
+  let needsRender = true;
   let containerResizeObserver: ResizeObserver | null = null;
   const loadingTileIds = new Set<number>();
   const tileMeshes = new Map<number, THREE.Mesh<THREE.PlaneGeometry, THREE.Material>>();
@@ -51,15 +53,30 @@ export function useRtiRenderer({
     colorGainVector,
   });
 
-  const {
-    syncMeshUniforms,
-    setRenderModeOnMeshes,
-    updateSpecularOnMeshes,
-    updateColorGainOnMeshes,
-    setReferenceLightOnMeshes,
-    setNeutralColorGainOnMeshes,
-    restoreLightOnMeshes,
-  } = meshUniforms;
+    const {
+      syncMeshUniforms,
+      setRenderModeOnMeshes: setRenderModeOnMeshesBase,
+      updateSpecularOnMeshes: updateSpecularOnMeshesBase,
+      updateColorGainOnMeshes: updateColorGainOnMeshesBase,
+      setReferenceLightOnMeshes,
+      setNeutralColorGainOnMeshes,
+      restoreLightOnMeshes,
+    } = meshUniforms;
+
+    function setRenderModeOnMeshes(mode: number) {
+      setRenderModeOnMeshesBase(mode);
+      requestRender();
+    }
+
+    function updateSpecularOnMeshes() {
+      updateSpecularOnMeshesBase();
+      requestRender();
+    }
+
+    function updateColorGainOnMeshes() {
+      updateColorGainOnMeshesBase();
+      requestRender();
+    }
 
   let loadTileMesh: (node: QuadtreeNode, worldBox: WorldBox) => void = () => {};
 
@@ -133,7 +150,7 @@ export function useRtiRenderer({
 
     const newRenderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
     newRenderer.setSize(width, height);
-    newRenderer.setPixelRatio(window.devicePixelRatio);
+    newRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.value = newRenderer;
     mountContainer.appendChild(newRenderer.domElement);
 
@@ -166,6 +183,7 @@ export function useRtiRenderer({
       syncMeshUniforms,
       getLightDir: () => lightDir.value,
       getColorGain: () => colorGainVector,
+      onTileReady: requestRender,
       debug,
     }));
 
@@ -173,16 +191,37 @@ export function useRtiRenderer({
     containerResizeObserver = new ResizeObserver(() => resize());
     containerResizeObserver.observe(wrapper);
 
-    const animate = () => {
-      animationFrameId = requestAnimationFrame(animate);
-      newControls.update();
-      updateTiles();
-      onFrame?.();
-      newRenderer.render(newScene, newCamera);
-    };
-    animate();
+    newControls.addEventListener('change', requestRender);
+    requestRender();
 
     return urlView;
+  }
+
+  function requestRender() {
+    needsRender = true;
+    if (renderLoopActive) return;
+    renderLoopActive = true;
+    animationFrameId = requestAnimationFrame(tick);
+  }
+
+  function tick() {
+    animationFrameId = null;
+    const currentControls = controls.value;
+    const damping = currentControls ? currentControls.update() : false;
+    const shouldDraw = needsRender || damping || loadingTileIds.size > 0;
+    needsRender = false;
+
+    if (shouldDraw && renderer.value && scene.value && camera.value) {
+      updateTiles();
+      onFrame?.();
+      renderer.value.render(scene.value, camera.value);
+    }
+
+    if (damping || loadingTileIds.size > 0 || needsRender) {
+      animationFrameId = requestAnimationFrame(tick);
+      return;
+    }
+    renderLoopActive = false;
   }
 
   function dispose() {
@@ -191,11 +230,16 @@ export function useRtiRenderer({
     containerResizeObserver = null;
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
+    renderLoopActive = false;
+    needsRender = false;
     if (renderer.value) {
       renderer.value.dispose();
       container.value?.removeChild(renderer.value.domElement);
     }
-    if (controls.value) controls.value.dispose();
+    if (controls.value) {
+      controls.value.removeEventListener('change', requestRender);
+      controls.value.dispose();
+    }
     textureCache.dispose();
     tileMeshes.clear();
     loadingTileIds.clear();
@@ -224,6 +268,7 @@ export function useRtiRenderer({
 
     renderer.value.setSize(width, height);
     onResize?.();
+    requestRender();
   }
 
   function setControlsEnabled(enabled: boolean) {
@@ -296,7 +341,7 @@ export function useRtiRenderer({
       }
     }
 
-    for (const { node, worldBox, isFallback } of visibleNodes) {
+    for (const { node, worldBox } of visibleNodes) {
       if (!tileMeshes.has(node.id)) {
         loadTileMesh(node, worldBox);
       } else {
@@ -355,8 +400,10 @@ export function useRtiRenderer({
     }
     if (urlView.colorGain) {
       colorGainVector.set(urlView.colorGain.r, urlView.colorGain.g, urlView.colorGain.b);
+      requestRender();
       return urlView.colorGain;
     }
+    requestRender();
     return null;
   }
 
@@ -386,5 +433,6 @@ export function useRtiRenderer({
     exportPng,
     sampleColorAtScreen,
     applyUrlView,
+    requestRender,
   };
 }

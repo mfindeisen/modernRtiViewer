@@ -69,4 +69,16 @@ describe('parseRtiInfoXml', () => {
     expect(info.tileSize).toBe(256);
     expect(info.layerCount).toBe(3);
   });
+
+  it('uses six layers for RGB PTM xml', () => {
+    const xml = `<?xml version="1.0"?>
+<root>
+  <Content type="RGB_PTM" />
+  <Size width="512" height="512" coefficients="6" />
+  <Tree>levels\n256</Tree>
+</root>`;
+    const info = parseRtiInfoXml(xml);
+    expect(info.type).toBe(3);
+    expect(info.layerCount).toBe(6);
+  });
 });

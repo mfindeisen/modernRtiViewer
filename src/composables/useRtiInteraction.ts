@@ -26,12 +26,14 @@ export function useRtiInteraction({
   onLeaveAnnotate,
   onLeaveWhiteBalance,
   onWhiteBalancePick,
+  onLightChange,
 }: UseRtiInteractionOptions) {
   let teardown: (() => void) | null = null;
 
   function updateLightFromNormalized(x: number, y: number) {
     const dir = normalizedUvToLightDir(x, y);
     lightDir.value.set(dir.x, dir.y, dir.z).normalize();
+    onLightChange?.();
   }
 
   function applyPointerStyles(mode = currentMode.value) {

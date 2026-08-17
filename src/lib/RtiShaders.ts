@@ -155,6 +155,81 @@ const LRGB_PTM_FRAGMENT = buildRtiFragmentShader(`
   }
 `);
 
+const RGB_PTM_FRAGMENT = buildRtiFragmentShader(`
+  uniform vec3 uLightDir;
+  uniform sampler2D tex0;
+  uniform sampler2D tex1;
+  uniform sampler2D tex2;
+  uniform sampler2D tex3;
+  uniform sampler2D tex4;
+  uniform sampler2D tex5;
+  uniform vec3 uBias;
+  uniform vec3 uBias2;
+  uniform vec3 uScale;
+  uniform vec3 uScale2;
+
+  vec3 decodeCoeff(sampler2D tex, float bias, float scale) {
+    return (texture2D(tex, vUv).xyz - bias / 255.0) * scale;
+  }
+
+  vec3 evalRgbPtm(float u, float v) {
+    vec3 a0 = decodeCoeff(tex0, uBias.x, uScale.x);
+    vec3 a1 = decodeCoeff(tex1, uBias.y, uScale.y);
+    vec3 a2 = decodeCoeff(tex2, uBias.z, uScale.z);
+    vec3 a3 = decodeCoeff(tex3, uBias2.x, uScale2.x);
+    vec3 a4 = decodeCoeff(tex4, uBias2.y, uScale2.y);
+    vec3 a5 = decodeCoeff(tex5, uBias2.z, uScale2.z);
+    return a0 * (u * u) + a1 * (v * v) + a2 * (u * v) + a3 * u + a4 * v + a5;
+  }
+
+  vec3 ptmNormal() {
+    vec3 lum = vec3(0.299, 0.587, 0.114);
+    float a0 = dot(decodeCoeff(tex0, uBias.x, uScale.x), lum);
+    float a1 = dot(decodeCoeff(tex1, uBias.y, uScale.y), lum);
+    float a2 = dot(decodeCoeff(tex2, uBias.z, uScale.z), lum);
+    float a3 = dot(decodeCoeff(tex3, uBias2.x, uScale2.x), lum);
+    float a4 = dot(decodeCoeff(tex4, uBias2.y, uScale2.y), lum);
+    float den = 4.0 * a0 * a1 - a2 * a2;
+    float u0 = (a2 * a4 - 2.0 * a1 * a3) / (den + 0.000001);
+    float v0 = (a2 * a3 - 2.0 * a0 * a4) / (den + 0.000001);
+    float r2 = u0 * u0 + v0 * v0;
+    if (r2 > 1.0) {
+      float len = sqrt(r2);
+      u0 /= len;
+      v0 /= len;
+      r2 = 1.0;
+    }
+    return normalize(vec3(u0, -v0, sqrt(max(0.0, 1.0 - r2))));
+  }
+
+  void main() {
+    if (outsideBounds(vWorldPos, uBounds)) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      return;
+    }
+
+    float u = uLightDir.x;
+    float v = uLightDir.y;
+    vec3 color = evalRgbPtm(u, v);
+
+    if (uRenderMode == 0) {
+      gl_FragColor = vec4(applyColorGain(color), 1.0);
+    } else if (uRenderMode == 1) {
+      float lum = dot(color, vec3(0.299, 0.587, 0.114));
+      float specular = pow(max(0.0, lum), uSpecularExponent);
+      gl_FragColor = vec4(applyColorGain(color + vec3(specular * 0.8)), 1.0);
+    } else if (uRenderMode == 2) {
+      gl_FragColor = vec4(applyColorGain(shadedNormalColor(ptmNormal(), uLightDir)), 1.0);
+    } else if (uRenderMode == 3) {
+      gl_FragColor = vec4(applyColorGain(slopeHeatmap(ptmNormal())), 1.0);
+    } else if (uRenderMode == 4) {
+      vec3 color2 = evalRgbPtm(-uLightDir.x, -uLightDir.y);
+      vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
+      gl_FragColor = vec4(applyColorGain(dualColor), 1.0);
+    }
+  }
+`);
+
 const NEURAL_RTI_FRAGMENT = buildRtiFragmentShader(`
   uniform vec3 uLightDir;
   uniform sampler2D tex0;
@@ -311,6 +386,41 @@ export const LrgbPtmMaterial = (
     },
     vertexShader: RTI_VERTEX_SHADER,
     fragmentShader: LRGB_PTM_FRAGMENT,
+    transparent: true,
+  });
+};
+
+export const RgbPtmMaterial = (
+  textures: THREE.Texture[],
+  lightDir: THREE.Vector3,
+  bias: number[],
+  scale: number[],
+  bounds: THREE.Vector4,
+  colorGain: THREE.Vector3,
+) => {
+  while (bias.length < 6) bias.push(0);
+  while (scale.length < 6) scale.push(1);
+
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uLightDir: { value: lightDir },
+      tex0: { value: textures[0] || null },
+      tex1: { value: textures[1] || null },
+      tex2: { value: textures[2] || null },
+      tex3: { value: textures[3] || null },
+      tex4: { value: textures[4] || null },
+      tex5: { value: textures[5] || null },
+      uBias: { value: new THREE.Vector3(bias[0], bias[1], bias[2]) },
+      uBias2: { value: new THREE.Vector3(bias[3], bias[4], bias[5]) },
+      uScale: { value: new THREE.Vector3(scale[0], scale[1], scale[2]) },
+      uScale2: { value: new THREE.Vector3(scale[3], scale[4], scale[5]) },
+      uBounds: { value: bounds },
+      uRenderMode: { value: 0 },
+      uSpecularExponent: { value: 10.0 },
+      uColorGain: { value: defaultColorGain(colorGain) },
+    },
+    vertexShader: RTI_VERTEX_SHADER,
+    fragmentShader: RGB_PTM_FRAGMENT,
     transparent: true,
   });
 };

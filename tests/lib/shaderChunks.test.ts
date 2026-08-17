@@ -31,4 +31,9 @@ describe('shaderChunks', () => {
     expect(shader).not.toContain('uRenderMode');
     expect(shader).toContain('applyColorGain');
   });
+
+  it('includes RGB PTM coefficient sampling in the shader library', async () => {
+    const { RgbPtmMaterial } = await import('@/lib/RtiShaders.js');
+    expect(RgbPtmMaterial).toBeTypeOf('function');
+  });
 });

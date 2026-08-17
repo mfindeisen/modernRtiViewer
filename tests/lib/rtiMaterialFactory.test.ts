@@ -6,6 +6,7 @@ import type { RtiInfo } from '@/types/rti.js';
 vi.mock('@/lib/RtiShaders.js', () => ({
   HshShaderMaterial: vi.fn(() => ({ type: 'hsh' })),
   LrgbPtmMaterial: vi.fn(() => ({ type: 'lrgb' })),
+  RgbPtmMaterial: vi.fn(() => ({ type: 'rgbPtm' })),
   NeuralRtiMaterial: vi.fn(() => ({ type: 'neural' })),
 }));
 
@@ -13,7 +14,7 @@ vi.mock('@/lib/ImageShaderMaterial.js', () => ({
   ImageShaderMaterial: vi.fn(() => ({ type: 'image' })),
 }));
 
-import { HshShaderMaterial, LrgbPtmMaterial, NeuralRtiMaterial } from '@/lib/RtiShaders.js';
+import { HshShaderMaterial, LrgbPtmMaterial, NeuralRtiMaterial, RgbPtmMaterial } from '@/lib/RtiShaders.js';
 import { ImageShaderMaterial } from '@/lib/ImageShaderMaterial.js';
 import { quadtreeToBounds, createRtiMaterial } from '@/lib/rtiMaterialFactory.js';
 
@@ -62,6 +63,9 @@ describe('createRtiMaterial', () => {
 
     createRtiMaterial({ ...base, rtiInfo: { ...stubInfo, type: 2, bias: [], scale: [] } });
     expect(LrgbPtmMaterial).toHaveBeenCalled();
+
+    createRtiMaterial({ ...base, rtiInfo: { ...stubInfo, type: 3, bias: [], scale: [] } });
+    expect(RgbPtmMaterial).toHaveBeenCalled();
 
     createRtiMaterial({ ...base, rtiInfo: { ...stubInfo, type: 4 } });
     expect(ImageShaderMaterial).toHaveBeenCalledWith(base.textures[0], base.bounds, base.colorGain);
