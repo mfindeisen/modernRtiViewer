@@ -42,7 +42,7 @@
         :r="shape.r"
         fill="none"
         :stroke="shape.color"
-        :stroke-width="selectedId === shape.annotationId ? 3 : 2"
+        :stroke-width="isSelected(shape) ? 3 : 2"
         vector-effect="non-scaling-stroke"
         :stroke-dasharray="shape.draft ? '6 4' : undefined"
         class="pointer-events-none"
@@ -55,7 +55,7 @@
         :fill="shape.color"
         fill-opacity="0.9"
         :stroke="shape.color"
-        :stroke-width="selectedId === shape.annotationId ? 3 : 2"
+        :stroke-width="isSelected(shape) ? 3 : 2"
         vector-effect="non-scaling-stroke"
         class="pointer-events-none"
       />
@@ -67,7 +67,7 @@
         :height="shape.h"
         fill="none"
         :stroke="shape.color"
-        :stroke-width="selectedId === shape.annotationId ? 3 : 2"
+        :stroke-width="isSelected(shape) ? 3 : 2"
         vector-effect="non-scaling-stroke"
         :stroke-dasharray="shape.draft ? '6 4' : undefined"
         class="pointer-events-none"
@@ -80,7 +80,7 @@
           :width="(shape.labelWidth ?? 0) + 12"
           height="22"
           rx="4"
-          :fill="selectedId === shape.annotationId ? 'rgba(30, 58, 138, 0.95)' : 'rgba(15, 23, 42, 0.92)'"
+          :fill="isSelected(shape) ? 'rgba(30, 58, 138, 0.95)' : 'rgba(15, 23, 42, 0.92)'"
           stroke="rgba(255, 255, 255, 0.15)"
           stroke-width="1"
         />
@@ -120,4 +120,10 @@ const emit = defineEmits<{
 
 const overlayEl = ref(null);
 defineExpose({ overlayEl });
+
+function isSelected(shape: OverlayShape) {
+  return props.selectedId != null
+    && shape.annotationId != null
+    && String(props.selectedId) === String(shape.annotationId);
+}
 </script>

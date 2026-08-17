@@ -2,7 +2,7 @@ import { ref } from 'vue';
 import { buildShareUrl } from '../lib/viewerUrl.js';
 import { captureRtiView, applyRtiView } from '../lib/viewerViewState.js';
 
-import type { UseViewerChromeOptions } from './types.js';
+import type { UseViewerChromeOptions, ViewerMode } from './types.js';
 import type { Annotation } from '../types/rti.js';
 
 export function useViewerChrome({
@@ -19,6 +19,9 @@ export function useViewerChrome({
   setRenderMode,
   updateSpecular,
   updateColorGain,
+  setMode,
+  fitToView,
+  requestRender,
   onViewRestored,
   hostHandlers,
 }: UseViewerChromeOptions) {
@@ -96,6 +99,7 @@ export function useViewerChrome({
         z: lightDir.value.z,
       },
       renderMode: renderMode.value,
+      specularExponent: specularExponent.value,
       colorGain: colorGain.value,
     });
     isCopied.value = false;
@@ -166,6 +170,28 @@ export function useViewerChrome({
         hostHandlers.onResize();
       } else if (type === 'select-annotation') {
         hostHandlers.onSelectAnnotation(payload.id ?? null);
+      } else if (type === 'set-light') {
+        const dir = (payload.lightDir || payload) as { x?: number; y?: number; z?: number };
+        if (typeof dir.x === 'number' && typeof dir.y === 'number') {
+          const z = typeof dir.z === 'number'
+            ? dir.z
+            : Math.sqrt(Math.max(0, 1 - dir.x * dir.x - dir.y * dir.y));
+          lightDir.value.set(dir.x, dir.y, z).normalize();
+          requestRender();
+          onViewRestored?.();
+        }
+      } else if (type === 'set-render-mode' && typeof payload.mode === 'number') {
+        setRenderMode(payload.mode);
+      } else if (type === 'set-interaction-mode' && isInteractionMode(payload.mode)) {
+        setMode(payload.mode);
+      } else if (type === 'fit') {
+        fitToView();
+      } else if (type === 'export') {
+        if (payload.download === false) {
+          hostHandlers.onExport?.(exportPng());
+        } else {
+          exportImage();
+        }
       }
     };
 
@@ -208,4 +234,8 @@ export function useViewerChrome({
     attachHostCommands,
     dispose,
   };
+}
+
+function isInteractionMode(value: unknown): value is ViewerMode {
+  return value === 'pan' || value === 'light' || value === 'annotate' || value === 'whitebalance';
 }

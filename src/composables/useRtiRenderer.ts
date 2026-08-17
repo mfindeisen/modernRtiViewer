@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { QuadtreeManager } from '../lib/QuadtreeManager';
-import { computeFitToViewZoom } from '../lib/cameraFit.js';
+import { computeFitToViewZoom, computeZoomLimits } from '../lib/cameraFit.js';
 import { parseViewHash } from '../lib/viewerUrl.js';
 import { loadRtiInfo, normalizeTileFormat } from '../lib/rtiInfoLoader.js';
 import { openTiffDataset } from '../lib/openTiffDataset.js';
@@ -210,6 +210,7 @@ export function useRtiRenderer({
     newControls.enableDamping = true;
     newControls.dampingFactor = 0.05;
     newControls.enabled = getPanEnabled();
+    applyZoomLimits(newCamera, newControls, rti, width, height);
 
     ({ loadTileMesh, dispose: disposeTileLoader } = createTileMeshLoader({
       scene,
@@ -284,17 +285,15 @@ export function useRtiRenderer({
     animationFrameId = null;
     renderLoopActive = false;
     needsRender = false;
+    clearGpuMeshes();
     if (renderer.value) {
       renderer.value.dispose();
-      container.value?.removeChild(renderer.value.domElement);
+      renderer.value.domElement.parentNode?.removeChild(renderer.value.domElement);
     }
     if (controls.value) {
       controls.value.removeEventListener('change', requestRender);
       controls.value.dispose();
     }
-    textureCache.dispose();
-    tileMeshes.clear();
-    loadingTileIds.clear();
     activeMeshesCount.value = 0;
     scene.value = null;
     camera.value = null;
@@ -303,6 +302,21 @@ export function useRtiRenderer({
     quadtree.value = null;
     tiffLoader.value = null;
     rtiInfo.value = null;
+  }
+
+  function applyZoomLimits(
+    cam = camera.value,
+    orbit = controls.value,
+    rti = rtiInfo.value,
+    width = containerWrapper.value?.clientWidth ?? 0,
+    height = containerWrapper.value?.clientHeight ?? 0,
+  ) {
+    if (!cam || !orbit || !rti) return;
+    const { minZoom, maxZoom } = computeZoomLimits(width, height, rti.width, rti.height);
+    orbit.minZoom = minZoom;
+    orbit.maxZoom = maxZoom;
+    cam.zoom = Math.min(maxZoom, Math.max(minZoom, cam.zoom));
+    cam.updateProjectionMatrix();
   }
 
   function resize() {
@@ -316,7 +330,7 @@ export function useRtiRenderer({
     camera.value.right = viewSize * aspect;
     camera.value.top = viewSize;
     camera.value.bottom = -viewSize;
-    camera.value.updateProjectionMatrix();
+    applyZoomLimits(camera.value, controls.value, rtiInfo.value, width, height);
 
     renderer.value.setSize(width, height);
     onResize?.();
@@ -330,17 +344,31 @@ export function useRtiRenderer({
   function setControlMode(mode: import('./types.js').ViewerMode) {
     const c = controls.value;
     if (!c) return;
-    if (mode === 'pan') {
-      c.enabled = true;
-      c.enablePan = true;
-      c.enableZoom = true;
-    } else if (mode === 'whitebalance') {
-      c.enabled = true;
-      c.enablePan = false;
-      c.enableZoom = true;
-    } else {
-      c.enabled = false;
-    }
+    c.enabled = true;
+    c.enableZoom = true;
+    c.enablePan = mode === 'pan';
+  }
+
+  function fitToView() {
+    if (!camera.value || !controls.value || !rtiInfo.value || !containerWrapper.value) return;
+    const width = containerWrapper.value.clientWidth;
+    const height = containerWrapper.value.clientHeight;
+    camera.value.position.set(0, 0, 10);
+    camera.value.zoom = computeFitToViewZoom(width, height, rtiInfo.value.width, rtiInfo.value.height);
+    controls.value.target.set(0, 0, 0);
+    applyZoomLimits(camera.value, controls.value, rtiInfo.value, width, height);
+    controls.value.update();
+    requestRender();
+  }
+
+  function zoomBy(factor: number) {
+    if (!camera.value || !controls.value) return;
+    camera.value.zoom = Math.min(
+      controls.value.maxZoom,
+      Math.max(controls.value.minZoom, camera.value.zoom * factor),
+    );
+    camera.value.updateProjectionMatrix();
+    requestRender();
   }
 
   function updateTiles() {
@@ -419,20 +447,25 @@ export function useRtiRenderer({
     const savedLight = lightDir.value.clone();
     setReferenceLightOnMeshes();
     setNeutralColorGainOnMeshes();
-    renderFrame();
-
-    const canvas = renderer.value.domElement;
-    const rect = canvas.getBoundingClientRect();
-    const pixelRatio = renderer.value.getPixelRatio();
-    const x = Math.floor((clientX - rect.left) * pixelRatio);
-    const y = Math.floor((rect.bottom - clientY) * pixelRatio);
+    setRenderModeOnMeshes(0);
 
     const pixel = new Uint8Array(4);
-    const gl = renderer.value.getContext();
-    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    try {
+      renderFrame();
 
-    restoreLightOnMeshes(savedLight);
-    updateColorGainOnMeshes();
+      const canvas = renderer.value.domElement;
+      const rect = canvas.getBoundingClientRect();
+      const pixelRatio = renderer.value.getPixelRatio();
+      const x = Math.floor((clientX - rect.left) * pixelRatio);
+      const y = Math.floor((rect.bottom - clientY) * pixelRatio);
+
+      const gl = renderer.value.getContext();
+      gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    } finally {
+      restoreLightOnMeshes(savedLight);
+      setRenderModeOnMeshes(renderMode.value);
+      updateColorGainOnMeshes();
+    }
 
     const r = pixel[0] / 255;
     const g = pixel[1] / 255;
@@ -447,6 +480,9 @@ export function useRtiRenderer({
     }
     if (urlView.renderMode !== undefined) {
       renderMode.value = urlView.renderMode;
+    }
+    if (urlView.specularExponent !== undefined) {
+      specularExponent.value = urlView.specularExponent;
     }
     if (urlView.colorGain) {
       colorGainVector.set(urlView.colorGain.r, urlView.colorGain.g, urlView.colorGain.b);
@@ -484,5 +520,7 @@ export function useRtiRenderer({
     sampleColorAtScreen,
     applyUrlView,
     requestRender,
+    fitToView,
+    zoomBy,
   };
 }

@@ -6,6 +6,9 @@ import { useRtiInteraction } from './useRtiInteraction.js';
 import { useWhiteBalance } from './useWhiteBalance.js';
 import { useViewerChrome } from './useViewerChrome.js';
 import { useRenderSettings } from './useRenderSettings.js';
+import { useViewerKeyboard } from './useViewerKeyboard.js';
+import { nudgeLightDir } from '../lib/lightDirection.js';
+import { computeFitToViewZoom, formatZoomPercent } from '../lib/cameraFit.js';
 
 import type { RtiViewState } from '../types/rti.js';
 import type { UseRtiViewerOptions, ViewerMode } from './types.js';
@@ -36,6 +39,7 @@ export function useRtiViewer({
     setRenderMode,
     updateSpecular,
     onSpecularExponentChange,
+    resetShading,
   } = useRenderSettings(meshUpdaters);
 
   const rendererHooks = {
@@ -75,6 +79,8 @@ export function useRtiViewer({
     exportPng,
     sampleColorAtScreen,
     requestRender,
+    fitToView,
+    zoomBy,
   } = rtiRenderer;
 
   Object.assign(meshUpdaters, {
@@ -170,6 +176,9 @@ export function useRtiViewer({
     setRenderMode,
     updateSpecular,
     updateColorGain,
+    setMode,
+    fitToView,
+    requestRender,
     onViewRestored: () => {
       updateOverlayShapes();
       requestRender();
@@ -178,6 +187,7 @@ export function useRtiViewer({
       onSetAnnotations: annotations.setAnnotations,
       onResize: resizeRenderer,
       onSelectAnnotation: annotations.selectAnnotation,
+      onExport: (dataUrl) => emit('rti-export', dataUrl),
     },
   });
 
@@ -201,10 +211,106 @@ export function useRtiViewer({
 
   captureRtiViewFn = getCaptureState;
 
-  rendererHooks.onFrame = () => updateOverlayShapes();
+  const hudZoomPercent = ref(100);
+  const hudLightX = ref('0.00');
+  const hudLightY = ref('0.00');
+  let viewChangeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function updateHud() {
+    const cam = camera.value;
+    const info = rtiInfo.value;
+    const wrap = containerWrapper.value;
+    if (cam && info && wrap) {
+      const fit = computeFitToViewZoom(wrap.clientWidth, wrap.clientHeight, info.width, info.height);
+      hudZoomPercent.value = formatZoomPercent(cam.zoom, fit);
+    }
+    hudLightX.value = lightDir.value.x.toFixed(2);
+    hudLightY.value = lightDir.value.y.toFixed(2);
+  }
+
+  function emitViewChange() {
+    const view = getCaptureState();
+    emit('view-change', view);
+    rootWrapper.value?.dispatchEvent(new CustomEvent('view-change', {
+      detail: view,
+      bubbles: true,
+    }));
+  }
+
+  function scheduleViewChange() {
+    if (viewChangeTimer) clearTimeout(viewChangeTimer);
+    viewChangeTimer = setTimeout(emitViewChange, 160);
+  }
+
+  function applyNudgeLight(dx: number, dy: number) {
+    const next = nudgeLightDir(lightDir.value, dx, dy);
+    lightDir.value.set(next.x, next.y, next.z);
+    requestRender();
+  }
+
+  function handleEscape() {
+    if (showShareModal.value) {
+      showShareModal.value = false;
+      return;
+    }
+    if (showInfo.value) {
+      showInfo.value = false;
+      return;
+    }
+    clearDrawingState();
+    if (currentMode.value !== 'pan') setMode('pan');
+  }
+
+  const keyboard = useViewerKeyboard({
+    root: rootWrapper,
+    getAnnotationEnabled: () => !!props.annotationEnabled,
+    getMaxRenderMode: () => (rtiInfo.value?.type === 5 ? 5 : 4),
+    onCommand(command) {
+      if (command.type === 'interaction-mode') {
+        if (command.mode === 'annotate') {
+          toggleAnnotateMode();
+          return;
+        }
+        if (command.mode === 'whitebalance') {
+          toggleWhiteBalanceMode();
+          return;
+        }
+        setMode(command.mode);
+        return;
+      }
+      if (command.type === 'render-mode') {
+        setRenderMode(command.mode);
+        return;
+      }
+      if (command.type === 'nudge-light') {
+        applyNudgeLight(command.dx, command.dy);
+        return;
+      }
+      if (command.type === 'zoom') {
+        zoomBy(command.factor);
+        return;
+      }
+      if (command.type === 'fit') {
+        fitToView();
+        return;
+      }
+      if (command.type === 'export') {
+        exportImage();
+        return;
+      }
+      handleEscape();
+    },
+  });
+
+  rendererHooks.onFrame = () => {
+    updateOverlayShapes();
+    updateHud();
+    scheduleViewChange();
+  };
   rendererHooks.onResize = () => {
     syncOverlaySize();
     updateOverlayShapes();
+    updateHud();
   };
 
   const toggleAnnotateMode = () => toggleAnnotateModeBase(setMode);
@@ -222,6 +328,8 @@ export function useRtiViewer({
     clearDrawingState();
     applyColorGain({ r: 1, g: 1, b: 1 });
     clearWbFeedback();
+    lightDir.value.set(0, 0, 1);
+    resetShading();
     if (currentMode.value !== 'pan') setMode('pan');
 
     await fetchRtiInfo();
@@ -258,6 +366,8 @@ export function useRtiViewer({
       attachHostCommands();
       observeSidebarResize();
       attachGlobalListeners();
+      keyboard.setup();
+      updateHud();
     } catch (err: unknown) {
       error.value = err instanceof Error ? err.message : String(err);
       loading.value = false;
@@ -281,6 +391,8 @@ export function useRtiViewer({
   function unmount() {
     isMounted = false;
     loadedUrl = '';
+    if (viewChangeTimer) clearTimeout(viewChangeTimer);
+    keyboard.dispose();
     disposeChrome();
     disposeInteraction();
     disposeRenderer();
@@ -340,6 +452,10 @@ export function useRtiViewer({
     executeCopyLink,
     toggleFullscreen,
     setMode,
+    fitToView,
+    hudZoomPercent,
+    hudLightX,
+    hudLightY,
     mount,
     unmount,
     onAnnotationEnabledChange,

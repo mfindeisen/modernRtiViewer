@@ -74,6 +74,16 @@ describe('buildOverlayShapes', () => {
     expect(shapes[2]).toMatchObject({ kind: 'rect', w: 30, h: 30 });
   });
 
+  it('stringifies numeric annotation ids for overlay matching', () => {
+    const shapes = buildOverlayShapes(
+      [{ id: 42, type: 'point', geometry: { position: [0.5, 0.5] } }] as Annotation[],
+      null,
+      '#f59e0b',
+      project,
+    );
+    expect(shapes[0].annotationId).toBe('42');
+  });
+
   it('includes draft shape when drawing', () => {
     const shapes = buildOverlayShapes(
       [],

@@ -29,7 +29,7 @@ export interface UseRtiViewerOptions {
     annotationEnabled?: boolean;
     tileFormat?: string;
   };
-  emit: (event: 'annotation-create' | 'rti-loaded' | 'annotation-click', ...args: unknown[]) => void;
+  emit: (event: 'annotation-create' | 'rti-loaded' | 'annotation-click' | 'view-change' | 'rti-export', ...args: unknown[]) => void;
   rootWrapper: Ref<HTMLElement | null>;
   sidebarComponentRef: Ref<{ sidebarEl?: HTMLElement } | null>;
   compassComponentRef: Ref<{ compassEl?: HTMLElement } | null>;
@@ -98,10 +98,14 @@ export interface UseViewerChromeOptions {
   setRenderMode: (mode: number) => void;
   updateSpecular: () => void;
   updateColorGain: () => void;
+  setMode: (mode: ViewerMode) => void;
+  fitToView: () => void;
+  requestRender: () => void;
   onViewRestored?: () => void;
   hostHandlers: {
     onSetAnnotations: (list: Annotation[]) => void;
     onResize: () => void;
-    onSelectAnnotation: (id: string | null) => void;
+    onSelectAnnotation: (id: string | number | null) => void;
+    onExport?: (dataUrl: string | null) => void;
   };
 }

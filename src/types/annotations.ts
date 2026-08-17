@@ -8,7 +8,7 @@ export interface OverlayShapeBase {
   labelX?: number;
   labelY?: number;
   labelWidth?: number;
-  annotationId?: string;
+  annotationId?: string | number;
   ann?: Annotation;
 }
 
@@ -46,7 +46,7 @@ interface ShapeMeta {
   draft?: boolean;
   key?: string | number;
   label?: string;
-  annotationId?: string;
+  annotationId?: string | number;
   ann?: Annotation;
 }
 
@@ -116,8 +116,8 @@ export function geometryToOverlayShape(
 
   if (!shape) return null;
 
-  if (!draft && meta.annotationId) {
-    shape.annotationId = meta.annotationId;
+  if (!draft && meta.annotationId != null && meta.annotationId !== '') {
+    shape.annotationId = String(meta.annotationId);
     shape.ann = meta.ann;
   }
   if (label) {
@@ -145,7 +145,7 @@ export function buildOverlayShapes(
       ann.geometry,
       {
         key: ann.id,
-        annotationId: ann.id,
+        annotationId: ann.id == null ? undefined : String(ann.id),
         ann,
         color: ann.color,
         label: ann.label as string | undefined,

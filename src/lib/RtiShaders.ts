@@ -69,10 +69,7 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
   }
 
   void main() {
-    if (outsideBounds(vWorldPos, uBounds)) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-      return;
-    }
+    clipPaddedBounds();
 
     vec3 color = evaluateHsh(uLightDir);
     vec3 c1 = unpackCoeff(tex1, uBias.y, uScale.y);
@@ -116,10 +113,7 @@ const LRGB_PTM_FRAGMENT = buildRtiFragmentShader(`
   uniform vec3 uScale2;
 
   void main() {
-    if (outsideBounds(vWorldPos, uBounds)) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-      return;
-    }
+    clipPaddedBounds();
 
     vec3 coeffH = texture2D(tex0, vUv).xyz;
     vec3 coeffL = texture2D(tex1, vUv).xyz;
@@ -229,10 +223,7 @@ const RGB_PTM_FRAGMENT = buildRtiFragmentShader(`
   }
 
   void main() {
-    if (outsideBounds(vWorldPos, uBounds)) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-      return;
-    }
+    clipPaddedBounds();
 
     float u = uLightDir.x;
     float v = uLightDir.y;
@@ -307,10 +298,7 @@ const NEURAL_RTI_FRAGMENT = buildRtiFragmentShader(`
   }
 
   void main() {
-    if (outsideBounds(vWorldPos, uBounds)) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-      return;
-    }
+    clipPaddedBounds();
 
     vec4 latent = texture2D(tex0, vUv);
     vec3 color = evaluateMLP(uLightDir, latent);

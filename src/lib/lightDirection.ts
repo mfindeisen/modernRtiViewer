@@ -23,6 +23,30 @@ export function normalizedUvToLightDir(x: number, y: number) {
   return { x: nx, y: ny, z: nz };
 }
 
+const DEFAULT_LIGHT_NUDGE = 0.06;
+
+/** Move the light on the hemisphere by dx/dy in the XY plane, then renormalize. */
+export function nudgeLightDir(
+  light: { x: number; y: number; z: number },
+  dx: number,
+  dy: number,
+  step = DEFAULT_LIGHT_NUDGE,
+) {
+  return clampLightXy(light.x + dx * step, light.y + dy * step);
+}
+
+function clampLightXy(nx: number, ny: number) {
+  let r2 = nx * nx + ny * ny;
+  const maxR2 = MAX_LIGHT_RADIUS * MAX_LIGHT_RADIUS;
+  if (r2 > maxR2) {
+    const len = Math.sqrt(r2);
+    nx = (nx / len) * MAX_LIGHT_RADIUS;
+    ny = (ny / len) * MAX_LIGHT_RADIUS;
+    r2 = maxR2;
+  }
+  return { x: nx, y: ny, z: Math.sqrt(Math.max(0, 1.0 - r2)) };
+}
+
 /** Map a canvas pointer position to normalized UV inside the inscribed square. */
 export function canvasPointerToNormalizedUv(clientX: number, clientY: number, rect: DOMRect) {
   const size = Math.min(rect.width, rect.height);

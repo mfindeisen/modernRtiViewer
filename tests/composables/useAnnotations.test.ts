@@ -104,6 +104,12 @@ describe('useAnnotations', () => {
     expect(onClick).toHaveBeenCalledWith(ann);
   });
 
+  it('normalizes numeric annotation ids from the host', () => {
+    const { selectAnnotation, selectedAnnotationId } = createAnnotations();
+    selectAnnotation(42);
+    expect(selectedAnnotationId.value).toBe('42');
+  });
+
   it('clears drawing state when leaving annotate mode', () => {
     const { clearDrawingState, shapeMenuOpen } = createAnnotations();
     shapeMenuOpen.value = true;
@@ -144,7 +150,7 @@ describe('useAnnotations', () => {
     expect(preventDefault).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores wheel events outside pan mode', () => {
+  it('forwards wheel events to the viewer canvas in annotate mode', () => {
     currentMode.value = 'annotate';
     const canvas = document.createElement('canvas');
     const dispatchEvent = vi.spyOn(canvas, 'dispatchEvent');
@@ -157,6 +163,6 @@ describe('useAnnotations', () => {
       preventDefault: vi.fn(),
     } as unknown as WheelEvent);
 
-    expect(dispatchEvent).not.toHaveBeenCalled();
+    expect(dispatchEvent).toHaveBeenCalled();
   });
 });

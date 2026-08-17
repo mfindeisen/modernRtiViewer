@@ -27,4 +27,21 @@ describe('useRenderSettings', () => {
     expect(specularExponent.value).toBe(25);
     expect(meshUpdaters.updateSpecularOnMeshes).toHaveBeenCalled();
   });
+
+  it('resets shading to default mode and specular', () => {
+    const meshUpdaters = {
+      setRenderModeOnMeshes: vi.fn(),
+      updateSpecularOnMeshes: vi.fn(),
+    };
+    const { renderMode, specularExponent, setRenderMode, onSpecularExponentChange, resetShading } = useRenderSettings(meshUpdaters);
+
+    setRenderMode(5);
+    onSpecularExponentChange(25);
+    resetShading();
+
+    expect(renderMode.value).toBe(0);
+    expect(specularExponent.value).toBe(10);
+    expect(meshUpdaters.setRenderModeOnMeshes).toHaveBeenLastCalledWith(0);
+    expect(meshUpdaters.updateSpecularOnMeshes).toHaveBeenCalled();
+  });
 });

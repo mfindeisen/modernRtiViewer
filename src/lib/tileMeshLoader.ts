@@ -109,8 +109,11 @@ export function createTileMeshLoader({
       });
 
       syncMeshUniforms({ material });
+      const previousMaterial = mesh.material;
       mesh.material = material;
-      mesh.geometry = new THREE.PlaneGeometry(width, height);
+      if (previousMaterial && previousMaterial !== material) {
+        previousMaterial.dispose();
+      }
       loadingTileIds.delete(node.id);
       onTileReady?.();
     };
@@ -156,6 +159,10 @@ export function createTileMeshLoader({
     const textures: THREE.Texture[] = [];
     let loadedCount = 0;
     const layerCount = rtiInfo.value.layerCount;
+    if (layerCount < 1) {
+      fail();
+      return;
+    }
     const tileFormat = rtiInfo.value.format || 'jpg';
     for (let l = 0; l < layerCount; l++) {
       const tileUrl = `${url.value}/${node.id}_${l + 1}.${tileFormat}`;

@@ -4,6 +4,7 @@ import {
   normalizedUvToLightDir,
   canvasPointerToNormalizedUv,
   compassPointerToNormalizedUv,
+  nudgeLightDir,
 } from '@/lib/lightDirection.js';
 
 describe('normalizedUvToLightDir', () => {
@@ -19,6 +20,16 @@ describe('normalizedUvToLightDir', () => {
     const r2 = dir.x * dir.x + dir.y * dir.y;
     expect(r2).toBeLessThanOrEqual(MAX_LIGHT_RADIUS * MAX_LIGHT_RADIUS + 1e-6);
     expect(dir.z).toBeGreaterThan(0);
+  });
+});
+
+describe('nudgeLightDir', () => {
+  it('moves light in XY and stays on the hemisphere', () => {
+    const nudged = nudgeLightDir({ x: 0, y: 0, z: 1 }, 1, 0);
+    expect(nudged.x).toBeGreaterThan(0);
+    expect(nudged.y).toBeCloseTo(0, 5);
+    const len = Math.hypot(nudged.x, nudged.y, nudged.z);
+    expect(len).toBeCloseTo(1, 5);
   });
 });
 

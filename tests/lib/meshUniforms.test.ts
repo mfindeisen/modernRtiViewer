@@ -34,4 +34,26 @@ describe('createMeshUniformSync', () => {
     expect(uniforms.uSpecularExponent.value).toBe(15);
     expect(uniforms.uColorGain.value.copy).toHaveBeenCalledWith(colorGainVector);
   });
+
+  it('can force default render mode on meshes then restore', () => {
+    const lightDir = { value: mockVector3() } as unknown as Ref<THREE.Vector3>;
+    const renderMode = { value: 3 } as unknown as Ref<number>;
+    const specularExponent = { value: 10 } as unknown as Ref<number>;
+    const uniforms = { uRenderMode: { value: 3 } };
+    const tileMeshes = new Map([[1, { material: { uniforms } }]]) as unknown as Parameters<typeof createMeshUniformSync>[0]['tileMeshes'];
+
+    const { setRenderModeOnMeshes } = createMeshUniformSync({
+      tileMeshes,
+      lightDir,
+      renderMode,
+      specularExponent,
+      colorGainVector: mockVector3(),
+    });
+
+    setRenderModeOnMeshes(0);
+    expect(uniforms.uRenderMode.value).toBe(0);
+
+    setRenderModeOnMeshes(renderMode.value);
+    expect(uniforms.uRenderMode.value).toBe(3);
+  });
 });

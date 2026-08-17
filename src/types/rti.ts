@@ -58,6 +58,7 @@ export interface RtiViewState {
 export interface ParsedViewHash {
   lightDir?: Vec3;
   renderMode?: number;
+  specularExponent?: number;
   colorGain?: ColorGain;
   camera?: RtiCameraState;
 }

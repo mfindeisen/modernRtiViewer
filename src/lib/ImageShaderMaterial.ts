@@ -5,10 +5,7 @@ const IMAGE_FRAGMENT = buildImageFragmentShader(`
   uniform sampler2D tex0;
 
   void main() {
-    if (outsideBounds(vWorldPos, uBounds)) {
-      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
-      return;
-    }
+    clipPaddedBounds();
     vec3 color = texture2D(tex0, vUv).xyz;
     gl_FragColor = vec4(applyColorGain(color), 1.0);
   }

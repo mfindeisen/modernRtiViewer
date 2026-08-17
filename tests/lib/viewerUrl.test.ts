@@ -12,7 +12,7 @@ describe('parseViewHash', () => {
   });
 
   it('parses light direction, render mode, camera, and white balance', () => {
-    const hash = 'lx=0.5000&ly=0.2500&mode=2&cx=10.5&cy=-3.2&z=1.5&wbR=1.1&wbG=0.9&wbB=1.0';
+    const hash = 'lx=0.5000&ly=0.2500&mode=2&spec=25&cx=10.5&cy=-3.2&z=1.5&wbR=1.1&wbG=0.9&wbB=1.0';
     const parsed = parseViewHash(hash);
 
     expect(parsed.lightDir).toEqual({
@@ -21,6 +21,7 @@ describe('parseViewHash', () => {
       z: expect.closeTo(Math.sqrt(1 - 0.5 ** 2 - 0.25 ** 2)),
     });
     expect(parsed.renderMode).toBe(2);
+    expect(parsed.specularExponent).toBe(25);
     expect(parsed.camera).toEqual({ cx: 10.5, cy: -3.2, z: 1.5 });
     expect(parsed.colorGain).toEqual({ r: 1.1, g: 0.9, b: 1 });
   });
@@ -43,6 +44,18 @@ describe('buildShareUrl', () => {
     expect(parsed.lightDir?.x).toBeCloseTo(0.1, 3);
     expect(parsed.renderMode).toBe(1);
     expect(parsed.colorGain).toBeUndefined();
+    expect(parsed.specularExponent).toBeUndefined();
+  });
+
+  it('includes specular when it differs from the default', () => {
+    const url = buildShareUrl('https://example.com', {
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      lightDir: { x: 0, y: 0, z: 1 },
+      renderMode: 1,
+      specularExponent: 25,
+      colorGain: { r: 1, g: 1, b: 1 },
+    });
+    expect(parseViewHash(url.split('#')[1]).specularExponent).toBe(25);
   });
 
   it('includes white balance params when active', () => {

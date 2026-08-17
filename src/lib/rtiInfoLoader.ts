@@ -3,17 +3,27 @@ import type { RtiInfo, RtiInfoLoaders } from '../types/rti.js';
 const JSON_TYPE_MAP: Record<string, number> = { HSH_RTI: 1, LRGB_PTM: 2, RGB_PTM: 3, IMAGE: 4 };
 const XML_TYPE_MAP: Record<string, number> = { HSH: 1, HSH_RTI: 1, LRGB_PTM: 2, RGB_PTM: 3, IMAGE: 4 };
 
+/** Tile files the JPEG/PNG loader fetches. PTM `coefficients` is the polynomial count (6), not layers. */
+export function tileLayerCount(type: number, declared: number): number {
+  if (type === 2) return 3;
+  if (type === 3) return 6;
+  if (type === 4) return 1;
+  return declared > 0 ? declared : 1;
+}
+
 export function parseRtiInfoJson(json: Record<string, unknown>): RtiInfo {
   const content = (json.content || json) as Record<string, unknown>;
   const tree = (json.tree || json) as Record<string, unknown>;
   const rawFormat = typeof json.format === 'string' ? json.format : 'jpg';
+  const parsedType = JSON_TYPE_MAP[String(content.type)] ?? 4;
+  const declared = Number(content.layerCount ?? content.coefficients ?? 1) || 1;
 
   return {
-    type: JSON_TYPE_MAP[String(content.type)] ?? 4,
+    type: parsedType,
     width: content.width as number,
     height: content.height as number,
     tileSize: tree.tileSize as number,
-    layerCount: (content.layerCount ?? content.coefficients ?? 1) as number,
+    layerCount: tileLayerCount(parsedType, declared),
     format: normalizeTileFormat(rawFormat),
     bias: (content.bias ?? []) as number[],
     scale: (content.scale ?? []) as number[],
@@ -66,17 +76,13 @@ export function parseRtiInfoXml(xmlText: string): RtiInfo {
     const scale = scaleEl?.textContent ? scaleEl.textContent.trim().split(/\s+/).map(parseFloat) : [];
     const parsedType = XML_TYPE_MAP[contentType] ?? 4;
     const ordlen = parseInt(sizeEl.getAttribute('coefficients') ?? '3', 10) || 3;
-    let numLayers = ordlen;
-    if (parsedType === 2) numLayers = 3;
-    else if (parsedType === 3) numLayers = 6;
-    else if (parsedType === 4) numLayers = 1;
 
     return {
       type: parsedType,
       width: parseInt(sizeEl.getAttribute('width') ?? '0', 10),
       height: parseInt(sizeEl.getAttribute('height') ?? '0', 10),
       tileSize,
-      layerCount: numLayers,
+      layerCount: tileLayerCount(parsedType, ordlen),
       format: legacyFormat === '1' ? 'png' : 'jpg',
       bias,
       scale,

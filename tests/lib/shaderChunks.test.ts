@@ -14,6 +14,8 @@ describe('shaderChunks', () => {
 
   it('includes bounds check, slope heatmap, and color correction helpers', () => {
     expect(RTI_FRAGMENT_PREAMBLE).toContain('outsideBounds');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('clipPaddedBounds');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('discard');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('slopeHeatmap');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applyColorGain');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('shadedNormalColor');
@@ -50,6 +52,7 @@ describe('shaderChunks', () => {
       new THREE.Vector4(),
       new THREE.Vector3(1, 1, 1),
     );
+    expect(material.fragmentShader).toContain('clipPaddedBounds');
     expect(material.fragmentShader).toContain('tex8');
     expect(material.fragmentShader).toContain('uCoeffCount');
     expect(material.uniforms.uCoeffCount.value).toBe(9);

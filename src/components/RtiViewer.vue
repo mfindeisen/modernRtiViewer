@@ -1,5 +1,9 @@
 <template>
-  <div ref="rootWrapper" class="relative flex flex-row w-full h-full min-h-0 lg:min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700">
+  <div
+    ref="rootWrapper"
+    class="relative flex flex-row w-full h-full min-h-0 lg:min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700 outline-none"
+    tabindex="0"
+  >
 
     <ViewerSidebar
       ref="sidebarComponentRef"
@@ -83,6 +87,13 @@
       />
 
       <LightCompass ref="compassComponentRef" :light-dir="lightDir" />
+      <ViewerHud
+        :visible="!loading && !error"
+        :zoom-percent="hudZoomPercent"
+        :light-x="hudLightX"
+        :light-y="hudLightY"
+        @fit="fitToView"
+      />
     </div>
   </div>
 </template>
@@ -95,6 +106,7 @@ import ViewerShareModal from './ViewerShareModal.vue';
 import ViewerWhiteBalancePanel from './ViewerWhiteBalancePanel.vue';
 import ViewerGlossyPanel from './ViewerGlossyPanel.vue';
 import LightCompass from './LightCompass.vue';
+import ViewerHud from './ViewerHud.vue';
 import AnnotationOverlay from './AnnotationOverlay.vue';
 import { useRtiViewer } from '../composables/useRtiViewer.js';
 
@@ -125,7 +137,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['annotation-create', 'rti-loaded', 'annotation-click']);
+const emit = defineEmits(['annotation-create', 'rti-loaded', 'annotation-click', 'view-change', 'rti-export']);
 
 const rootWrapper = ref<HTMLElement | null>(null);
 const sidebarComponentRef = ref<{ sidebarEl?: HTMLElement } | null>(null);
@@ -188,6 +200,10 @@ const {
   executeCopyLink,
   toggleFullscreen,
   setMode,
+  fitToView,
+  hudZoomPercent,
+  hudLightX,
+  hudLightY,
   mount,
   unmount,
   onAnnotationEnabledChange,

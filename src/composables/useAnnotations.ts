@@ -126,8 +126,8 @@ export function useAnnotations({
     updateOverlayShapes();
   }
 
-  function selectAnnotation(id: string | null) {
-    selectedAnnotationId.value = id ?? null;
+  function selectAnnotation(id: string | number | null) {
+    selectedAnnotationId.value = id == null ? null : String(id);
   }
 
   function clearDrawingState() {
@@ -169,12 +169,11 @@ export function useAnnotations({
 
   function onShapeClick(shape: OverlayShape) {
     if (shape.draft || currentMode.value === 'annotate' || !shape.ann) return;
-    selectedAnnotationId.value = shape.annotationId ?? null;
+    selectedAnnotationId.value = shape.annotationId == null ? null : String(shape.annotationId);
     onClick(shape.ann);
   }
 
   function onAnnotationWheel(e: WheelEvent) {
-    if (currentMode.value !== 'pan') return;
     const canvas = renderer.value?.domElement;
     if (!canvas) return;
     canvas.dispatchEvent(

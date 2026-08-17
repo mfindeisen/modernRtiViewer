@@ -26,6 +26,10 @@ export const RTI_FRAGMENT_PREAMBLE = `
     return pos.x < bounds.x || pos.x > bounds.y || pos.y < bounds.z || pos.y > bounds.w;
   }
 
+  void clipPaddedBounds() {
+    if (outsideBounds(vWorldPos, uBounds)) discard;
+  }
+
   vec3 slopeHeatmap(vec3 N) {
     float steepness = 1.0 - N.z;
     vec3 heat = mix(vec3(0.0, 0.0, 0.8), vec3(0.0, 0.8, 0.2), clamp(steepness * 3.0, 0.0, 1.0));
@@ -52,6 +56,10 @@ export const IMAGE_FRAGMENT_PREAMBLE = `
 
   bool outsideBounds(vec2 pos, vec4 bounds) {
     return pos.x < bounds.x || pos.x > bounds.y || pos.y < bounds.z || pos.y > bounds.w;
+  }
+
+  void clipPaddedBounds() {
+    if (outsideBounds(vWorldPos, uBounds)) discard;
   }
 `;
 

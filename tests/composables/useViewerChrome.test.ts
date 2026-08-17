@@ -55,11 +55,14 @@ describe('useViewerChrome', () => {
         setRenderMode: vi.fn(),
         updateSpecular: vi.fn(),
         updateColorGain: vi.fn(),
+        setMode: vi.fn(),
+        fitToView: vi.fn(),
+        requestRender: vi.fn(),
         onViewRestored: vi.fn(),
         hostHandlers: hostHandlers as {
           onSetAnnotations: (list: Annotation[]) => void;
           onResize: () => void;
-          onSelectAnnotation: (id: string | null) => void;
+          onSelectAnnotation: (id: string | number | null) => void;
         },
         ...overrides,
       }),
@@ -84,6 +87,7 @@ describe('useViewerChrome', () => {
     expect(chrome.showShareModal.value).toBe(true);
     expect(chrome.generatedShareLink.value).toContain('https://example.com/share');
     expect(chrome.generatedShareLink.value).toContain('cx=10');
+    expect(chrome.generatedShareLink.value).toContain('spec=12');
     expect(chrome.isCopied.value).toBe(false);
   });
 
@@ -123,6 +127,51 @@ describe('useViewerChrome', () => {
     expect(hostHandlers.onSetAnnotations).toHaveBeenCalledWith([{ id: '1', type: 'point', geometry: {} }]);
     expect(hostHandlers.onResize).toHaveBeenCalled();
     expect(hostHandlers.onSelectAnnotation).toHaveBeenCalledWith('ann-1');
+  });
+
+  it('handles light, render mode, fit, and export host commands', () => {
+    const host = document.createElement('modern-rti-viewer');
+    document.body.appendChild(host);
+    rootWrapper.remove();
+    host.appendChild(rootWrapper);
+
+    const setRenderMode = vi.fn();
+    const setMode = vi.fn();
+    const fitToView = vi.fn();
+    const onExport = vi.fn();
+    const lightDir = { value: mockVector3(0, 0, 1) };
+    const { chrome } = createChrome({
+      lightDir,
+      setRenderMode,
+      setMode,
+      fitToView,
+      hostHandlers: {
+        ...hostHandlers,
+        onExport,
+      },
+    });
+
+    chrome.attachHostCommands();
+    host.dispatchEvent(new CustomEvent('rti-command', {
+      detail: { type: 'set-light', x: 0.4, y: 0.2 },
+    }));
+    host.dispatchEvent(new CustomEvent('rti-command', {
+      detail: { type: 'set-render-mode', mode: 3 },
+    }));
+    host.dispatchEvent(new CustomEvent('rti-command', {
+      detail: { type: 'set-interaction-mode', mode: 'light' },
+    }));
+    host.dispatchEvent(new CustomEvent('rti-command', { detail: { type: 'fit' } }));
+    host.dispatchEvent(new CustomEvent('rti-command', {
+      detail: { type: 'export', download: false },
+    }));
+
+    expect(lightDir.value.x).toBeCloseTo(0.4);
+    expect(lightDir.value.y).toBeCloseTo(0.2);
+    expect(setRenderMode).toHaveBeenCalledWith(3);
+    expect(setMode).toHaveBeenCalledWith('light');
+    expect(fitToView).toHaveBeenCalled();
+    expect(onExport).toHaveBeenCalledWith('data:image/png;base64,abc');
   });
 
   it('syncs fullscreen state from document events', () => {

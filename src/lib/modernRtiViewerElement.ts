@@ -66,6 +66,12 @@ export class ModernRtiViewerElement extends HTMLElement {
           onAnnotationClick(payload: unknown) {
             host.dispatchEvent(new CustomEvent('annotation-click', { detail: payload, bubbles: true }));
           },
+          onViewChange(detail: unknown) {
+            host.dispatchEvent(new CustomEvent('view-change', { detail, bubbles: true }));
+          },
+          onRtiExport(detail: unknown) {
+            host.dispatchEvent(new CustomEvent('rti-export', { detail, bubbles: true }));
+          },
         });
       },
     });

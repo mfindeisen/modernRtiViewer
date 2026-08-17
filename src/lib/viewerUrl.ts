@@ -34,6 +34,11 @@ export function parseViewHash(hash: string): ParsedViewHash {
     if (!Number.isNaN(mode)) result.renderMode = mode;
   }
 
+  if (params.has('spec')) {
+    const spec = parseFloat(params.get('spec')!);
+    if (!Number.isNaN(spec)) result.specularExponent = spec;
+  }
+
   if (params.has('wbR') && params.has('wbG') && params.has('wbB')) {
     const wbR = parseFloat(params.get('wbR')!);
     const wbG = parseFloat(params.get('wbG')!);
@@ -60,12 +65,15 @@ export interface BuildShareUrlState {
   lightDir: Vec3;
   renderMode: number;
   colorGain: ColorGain;
+  specularExponent?: number;
 }
+
+const DEFAULT_SHARE_SPECULAR = 10;
 
 /**
  * Build a shareable URL with hash-encoded viewer state.
  */
-export function buildShareUrl(baseUrl: string, { camera, lightDir, renderMode, colorGain }: BuildShareUrlState) {
+export function buildShareUrl(baseUrl: string, { camera, lightDir, renderMode, colorGain, specularExponent }: BuildShareUrlState) {
   const params = new URLSearchParams();
   params.set('cx', camera.cx.toFixed(4));
   params.set('cy', camera.cy.toFixed(4));
@@ -73,6 +81,10 @@ export function buildShareUrl(baseUrl: string, { camera, lightDir, renderMode, c
   params.set('lx', lightDir.x.toFixed(4));
   params.set('ly', lightDir.y.toFixed(4));
   params.set('mode', String(renderMode));
+
+  if (specularExponent !== undefined && Math.abs(specularExponent - DEFAULT_SHARE_SPECULAR) > 0.05) {
+    params.set('spec', specularExponent.toFixed(1));
+  }
 
   if (isWhiteBalanceActive(colorGain)) {
     params.set('wbR', colorGain.r.toFixed(4));

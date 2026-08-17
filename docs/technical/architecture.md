@@ -85,8 +85,16 @@ The `<modern-rti-viewer>` element dispatches:
 
 - `rti-loaded` — metadata ready
 - `annotation-create` / `annotation-click` — annotation events
-- accepts `rti-command` custom events for `set-annotations`, `restore-view`, `resize`, `select-annotation`
+- `view-change` — debounced camera / light / mode snapshot
+- `rti-export` — PNG data URL from an `export` command with `download: false`
+
+It accepts `rti-command` custom events:
+
+- `set-annotations`, `restore-view`, `resize`, `select-annotation`
+- `set-light`, `set-render-mode`, `set-interaction-mode`, `fit`, `export`
+
+Keyboard (when the viewer is focused): `H` pan, `L` light, `W` white balance, `A` annotate, `1–5` render modes, arrows nudge light, `+`/`-` zoom, `F` fit, `S` snapshot, `Esc` back to pan.
 
 Observed attributes: `url`, `share-url`, and `annotation-enabled` are reactive — changing them updates the embedded viewer without remounting.
 
-See `useViewerChrome.js` for the host command handler.
+See `useViewerChrome.ts` for the host command handler.
