@@ -8,6 +8,7 @@ import {
   worldToScreen,
   screenToWorld,
   imageNormRadiusToScreen,
+  imageNormCircleRadius,
 } from '@/lib/annotationCoords.js';
 
 const quadtree = {
@@ -79,5 +80,17 @@ describe('imageNormRadiusToScreen', () => {
   it('scales a normalized radius to screen pixels', () => {
     const radius = imageNormRadiusToScreen(0.1, quadtree, camera, domElement);
     expect(radius).toBeGreaterThan(0);
+  });
+});
+
+describe('imageNormCircleRadius', () => {
+  it('uses world distance so a vertical drag matches screen radius on a wide image', () => {
+    const center = { x: 0.5, y: 0.5 };
+    const right = imageNormCircleRadius(center, { x: 0.6, y: 0.5 }, quadtree);
+    const up = imageNormCircleRadius(center, { x: 0.5, y: 0.6 }, quadtree);
+    // imgBox is 800×600 world units, so the same 0.1 norm delta is shorter on Y.
+    expect(right).toBeCloseTo(0.1);
+    expect(up).toBeCloseTo(0.075);
+    expect(up).toBeLessThan(right);
   });
 });

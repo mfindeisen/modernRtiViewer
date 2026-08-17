@@ -64,11 +64,12 @@ export function parseRtiInfoXml(xmlText: string): RtiInfo {
     const scaleEl = xmlDoc.getElementsByTagName('Scale')[0];
     const bias = biasEl?.textContent ? biasEl.textContent.trim().split(/\s+/).map(parseFloat) : [];
     const scale = scaleEl?.textContent ? scaleEl.textContent.trim().split(/\s+/).map(parseFloat) : [];
+    const parsedType = XML_TYPE_MAP[contentType] ?? 4;
     const ordlen = parseInt(sizeEl.getAttribute('coefficients') ?? '3', 10) || 3;
-    const parsedType = XML_TYPE_MAP[contentType] || 2;
     let numLayers = ordlen;
     if (parsedType === 2) numLayers = 3;
-    if (parsedType === 3) numLayers = 6;
+    else if (parsedType === 3) numLayers = 6;
+    else if (parsedType === 4) numLayers = 1;
 
     return {
       type: parsedType,

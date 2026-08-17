@@ -99,6 +99,8 @@ export class ModernRtiViewerElement extends HTMLElement {
       this.app.unmount();
       this.app = null;
     }
+    this.mountPoint?.remove();
+    this.mountPoint = undefined;
     this._setUrl = undefined;
     this._setShareUrl = undefined;
     this._setAnnotationEnabled = undefined;

@@ -49,6 +49,14 @@ describe('parseRtiInfoJson', () => {
 
     expect(info.colorGain).toEqual({ r: 1.1, g: 0.95, b: 1.05 });
   });
+
+  it('defaults unknown json content types to IMAGE', () => {
+    const info = parseRtiInfoJson({
+      content: { type: 'WEIRD_RTI', width: 10, height: 10, layerCount: 9 },
+      tree: { tileSize: 256 },
+    });
+    expect(info.type).toBe(4);
+  });
 });
 
 describe('parseRtiInfoXml', () => {
@@ -80,5 +88,17 @@ describe('parseRtiInfoXml', () => {
     const info = parseRtiInfoXml(xml);
     expect(info.type).toBe(3);
     expect(info.layerCount).toBe(6);
+  });
+
+  it('does not treat unknown content types as LRGB PTM', () => {
+    const xml = `<?xml version="1.0"?>
+<root>
+  <Content type="WEIRD_RTI" />
+  <Size width="256" height="256" coefficients="9" />
+  <Tree>levels\n256</Tree>
+</root>`;
+    const info = parseRtiInfoXml(xml);
+    expect(info.type).toBe(4);
+    expect(info.layerCount).toBe(1);
   });
 });

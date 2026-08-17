@@ -21,8 +21,11 @@ interface CreateRtiMaterialOptions {
 }
 
 export function createRtiMaterial({ rtiInfo, textures, lightDir, bounds, colorGain }: CreateRtiMaterialOptions) {
-  if (rtiInfo.type === 5 && rtiInfo.weights) {
-    return NeuralRtiMaterial(textures, lightDir, rtiInfo.weights, bounds, colorGain);
+  if (rtiInfo.type === 5) {
+    if (rtiInfo.weights) {
+      return NeuralRtiMaterial(textures, lightDir, rtiInfo.weights, bounds, colorGain);
+    }
+    console.warn('[RTI Viewer] Neural dataset has no weights; falling back to image shader');
   }
   if (rtiInfo.type === 1) {
     return HshShaderMaterial(textures, lightDir, rtiInfo.bias ?? [], rtiInfo.scale ?? [], bounds, colorGain);

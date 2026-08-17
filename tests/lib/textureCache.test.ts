@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import type * as THREE from 'three';
 import { createTextureCache } from '@/lib/textureCache.js';
 import { mockTexture } from '../testUtils.js';
 
@@ -32,5 +31,16 @@ describe('createTextureCache', () => {
     cache.dispose();
     expect(dispose2).toHaveBeenCalledTimes(1);
     expect(cache.size()).toBe(0);
+  });
+
+  it('does not dispose textures that are still retained', () => {
+    const disposeOld = vi.fn();
+    const cache = createTextureCache(1);
+    cache.set('on-screen', [mockTexture(disposeOld)]);
+    cache.set('incoming', [mockTexture()], { retain: ['on-screen'] });
+
+    expect(disposeOld).not.toHaveBeenCalled();
+    expect(cache.get('on-screen')).not.toBeNull();
+    expect(cache.size()).toBe(2);
   });
 });

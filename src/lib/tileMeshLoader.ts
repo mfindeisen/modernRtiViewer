@@ -8,6 +8,8 @@ import { createTextureCache } from './textureCache.js';
 
 type TextureCache = ReturnType<typeof createTextureCache>;
 
+export const FAILED_TILE_RETRY_MS = 8000;
+
 interface CreateTileMeshLoaderOptions {
   scene: ShallowRef<THREE.Scene | null>;
   quadtree: ShallowRef<QuadtreeManager | null>;
@@ -41,8 +43,40 @@ export function createTileMeshLoader({
   onTileReady,
   debug = false,
 }: CreateTileMeshLoaderOptions) {
+  const failedUntil = new Map<number, number>();
+  let alive = true;
+
+  function dispose() {
+    alive = false;
+  }
+
+  function cacheKeyFor(nodeId: number) {
+    return `${url.value}_${nodeId}`;
+  }
+
+  function retainedCacheKeys() {
+    return [...tileMeshes.keys()].map(cacheKeyFor);
+  }
+
+  function dropPlaceholder(nodeId: number, extraTextures?: Array<THREE.Texture | undefined>) {
+    loadingTileIds.delete(nodeId);
+    extraTextures?.forEach((tex) => tex?.dispose?.());
+    const mesh = tileMeshes.get(nodeId);
+    if (!mesh) return;
+    scene.value?.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+    tileMeshes.delete(nodeId);
+  }
+
+  function markFailed(nodeId: number, extraTextures?: Array<THREE.Texture | undefined>) {
+    failedUntil.set(nodeId, Date.now() + FAILED_TILE_RETRY_MS);
+    dropPlaceholder(nodeId, extraTextures);
+  }
+
   function loadTileMesh(node: QuadtreeNode, worldBox: WorldBox) {
     if (!scene.value || !quadtree.value || !rtiInfo.value) return;
+    if ((failedUntil.get(node.id) ?? 0) > Date.now()) return;
 
     const width = worldBox.maxX - worldBox.minX;
     const height = worldBox.maxY - worldBox.minY;
@@ -59,8 +93,12 @@ export function createTileMeshLoader({
     scene.value.add(mesh);
     tileMeshes.set(node.id, mesh);
 
+    let settled = false;
+
     const applyTextures = (textures: THREE.Texture[]) => {
-      if (!quadtree.value || !rtiInfo.value) return;
+      if (!alive || settled || !quadtree.value || !rtiInfo.value) return;
+      settled = true;
+      failedUntil.delete(node.id);
       const bounds = quadtreeToBounds(quadtree.value);
       const material = createRtiMaterial({
         rtiInfo: rtiInfo.value,
@@ -77,7 +115,7 @@ export function createTileMeshLoader({
       onTileReady?.();
     };
 
-    const cacheKey = `${url.value}_${node.id}`;
+    const cacheKey = cacheKeyFor(node.id);
     const cachedTextures = textureCache.get(cacheKey);
     if (cachedTextures) {
       applyTextures(cachedTextures);
@@ -85,22 +123,32 @@ export function createTileMeshLoader({
     }
 
     const cacheAndApplyTextures = (textures: THREE.Texture[]) => {
-      textureCache.set(cacheKey, textures);
+      if (!alive || settled) {
+        textures.forEach((tex) => tex.dispose?.());
+        return;
+      }
+      textureCache.set(cacheKey, textures, { retain: retainedCacheKeys() });
       applyTextures(textures);
+    };
+
+    const fail = (extraTextures?: Array<THREE.Texture | undefined>) => {
+      if (!alive || settled) return;
+      settled = true;
+      markFailed(node.id, extraTextures);
     };
 
     if (tiffLoader.value) {
       tiffLoader.value.loadTileTextures(node, quadtree.value.nLevels, rtiInfo.value.tileSize)
         .then((textures) => {
           if (!textures || textures.length === 0) {
-            loadingTileIds.delete(node.id);
+            fail();
             return;
           }
           cacheAndApplyTextures(textures);
         })
         .catch((err: unknown) => {
           console.error(`[TiffTileLoader] Error loading tile for node ${node.id}:`, err);
-          loadingTileIds.delete(node.id);
+          fail();
         });
       return;
     }
@@ -113,6 +161,10 @@ export function createTileMeshLoader({
       const tileUrl = `${url.value}/${node.id}_${l + 1}.${tileFormat}`;
       if (debug) console.log(`[RTI Viewer] Requesting image: ${tileUrl}`);
       textureLoader.load(tileUrl, (tex: THREE.Texture) => {
+        if (!alive || settled) {
+          tex.dispose();
+          return;
+        }
         textures[l] = tex;
         tex.colorSpace = THREE.NoColorSpace;
         loadedCount++;
@@ -121,10 +173,10 @@ export function createTileMeshLoader({
         }
       }, undefined, (err: unknown) => {
         console.error(`Error loading tile ${node.id}_${l + 1}:`, err);
-        loadingTileIds.delete(node.id);
+        fail(textures);
       });
     }
   }
 
-  return { loadTileMesh };
+  return { loadTileMesh, dispose };
 }

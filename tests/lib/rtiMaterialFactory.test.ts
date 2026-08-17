@@ -69,5 +69,10 @@ describe('createRtiMaterial', () => {
 
     createRtiMaterial({ ...base, rtiInfo: { ...stubInfo, type: 4 } });
     expect(ImageShaderMaterial).toHaveBeenCalledWith(base.textures[0], base.bounds, base.colorGain);
+
+    (ImageShaderMaterial as unknown as { mockClear: () => void }).mockClear();
+    createRtiMaterial({ ...base, rtiInfo: { ...stubInfo, type: 5 } });
+    expect(NeuralRtiMaterial).toHaveBeenCalledTimes(1);
+    expect(ImageShaderMaterial).toHaveBeenCalled();
   });
 });

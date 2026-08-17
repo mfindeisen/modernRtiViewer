@@ -14,6 +14,7 @@
 import { fromUrl, Pool } from 'geotiff';
 import * as THREE from 'three';
 import type { RtiInfo, QuadtreeNode } from '../types/rti.js';
+import { paddedNodePixelWindow } from './tiffNodeWindow.js';
 
 export class TiffTileLoader {
   url: string;
@@ -94,10 +95,17 @@ export class TiffTileLoader {
         }
         const meta = JSON.parse(description);
         if (meta.type === 'neural') {
-          type = 5; // NEURAL
-          layerCount = 1;
-          numCoeffs = 1;
-          weights = meta.weights;
+          if (meta.weights) {
+            type = 5; // NEURAL
+            layerCount = 1;
+            numCoeffs = 1;
+            weights = meta.weights;
+          } else {
+            console.warn('[TiffTileLoader] Neural RTI metadata is missing weights; using image shader');
+            type = 4;
+            layerCount = 1;
+            numCoeffs = 1;
+          }
         } else {
           bias = meta.bias || [];
           scale = meta.scale || [];
@@ -162,24 +170,15 @@ export class TiffTileLoader {
     const image = this.images[Math.min(tiffLevel, this.images.length - 1)];
     const imgWidth = image.getWidth();
     const imgHeight = image.getHeight();
-
-    const woffset = (this.gridSize - this.fullWidth) / 2.0;
-    const hoffset = (this.gridSize - this.fullHeight) / 2.0;
-
-    const fullX0 = node.box!.minX * this.gridSize - woffset;
-    const fullY0 = (1.0 - node.box!.maxY) * this.gridSize - hoffset;
-    const fullX1 = node.box!.maxX * this.gridSize - woffset;
-    const fullY1 = (1.0 - node.box!.minY) * this.gridSize - hoffset;
-
-    const scaleX = imgWidth / this.fullWidth;
-    const scaleY = imgHeight / this.fullHeight;
-
-    const x0 = Math.max(0, Math.floor(fullX0 * scaleX));
-    const y0 = Math.max(0, Math.floor(fullY0 * scaleY));
-    const x1 = Math.min(imgWidth, Math.ceil(fullX1 * scaleX));
-    const y1 = Math.min(imgHeight, Math.ceil(fullY1 * scaleY));
-
-    return { image, x0, y0, x1, y1, tileW: x1 - x0, tileH: y1 - y0 };
+    const window = paddedNodePixelWindow(
+      node.box!,
+      this.gridSize,
+      this.fullWidth,
+      this.fullHeight,
+      imgWidth,
+      imgHeight,
+    );
+    return { image, ...window };
   }
 
   /**
@@ -187,15 +186,15 @@ export class TiffTileLoader {
    */
   _selectNodeWindow(node: QuadtreeNode, nLevels: number) {
     let tiffLevel = this._tiffLevelForNodeLevel(node.level, nLevels);
-    let { image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel);
-    const internalTileSize = image.getTileWidth ? image.getTileWidth() : 256;
+    let window = this._windowForNode(node, tiffLevel);
+    const internalTileSize = window.image.getTileWidth ? window.image.getTileWidth() : 256;
 
-    while ((tileW > internalTileSize || tileH > internalTileSize) && tiffLevel < this.images.length - 1) {
+    while ((window.tileW > internalTileSize || window.tileH > internalTileSize) && tiffLevel < this.images.length - 1) {
       tiffLevel++;
-      ({ image, x0, y0, x1, y1, tileW, tileH } = this._windowForNode(node, tiffLevel));
+      window = this._windowForNode(node, tiffLevel);
     }
 
-    return { image, x0, y0, x1, y1, tileW, tileH };
+    return window;
   }
 
   /** Run COG fetches one at a time — BlockedSource batches parallel slice requests into huge ranges. */
@@ -286,7 +285,7 @@ export class TiffTileLoader {
   async loadTileTextures(node: QuadtreeNode, nLevels: number, _tileSize: number) {
     if (!node.box) return null;
 
-    const { image, x0, y0, x1, y1, tileW, tileH } = this._selectNodeWindow(node, nLevels);
+    const { image, x0, y0, x1, y1, tileW, tileH, nx0, ny0, texW, texH } = this._selectNodeWindow(node, nLevels);
 
     if (tileW <= 0 || tileH <= 0) return null;
 
@@ -298,23 +297,22 @@ export class TiffTileLoader {
       return Math.min(255, Math.max(0, Math.round(Number(band[idx]))));
     };
 
-    // Build one DataTexture per shader layer
-    // The shader expects each layer as an RGB texture
     const textures: THREE.DataTexture[] = [];
 
     for (let layer = 0; layer < this.numCoeffs; layer++) {
-      const buf = new Uint8Array(tileW * tileH * 4);
+      const buf = new Uint8Array(texW * texH * 4);
 
       for (let y = 0; y < tileH; y++) {
+        const srcY = y0 + y;
+        const destY = texH - 1 - (srcY - ny0);
         const srcRowStart = y * tileW;
-        const destRowStart = (tileH - 1 - y) * tileW;
+        const destRowStart = destY * texW;
         for (let x = 0; x < tileW; x++) {
           const srcIdx = srcRowStart + x;
-          const destIdx = destRowStart + x;
+          const destIdx = destRowStart + ((x0 + x) - nx0);
           let r, g, b;
 
           if (this.rtiType === 5) {
-            // Neural RTI: 4 latent channels
             r = sample(0, srcIdx);
             g = sample(1, srcIdx);
             b = sample(2, srcIdx);
@@ -323,26 +321,22 @@ export class TiffTileLoader {
             buf[destIdx * 4 + 1] = g;
             buf[destIdx * 4 + 2] = b;
             buf[destIdx * 4 + 3] = a;
-            continue; // Skip the default packing below
+            continue;
           }
 
           if (this.rtiType === 4) {
-            // Standard image — single layer
             r = sample(0, srcIdx);
             g = sample(1, srcIdx);
             b = sample(2, srcIdx);
           } else if (this.rtiType === 2) {
-            // LRGB_PTM: layer 0 = channels 0,1,2 / layer 1 = 3,4,5 / layer 2 = 6,7,8
             r = sample(layer * 3 + 0, srcIdx);
             g = sample(layer * 3 + 1, srcIdx);
             b = sample(layer * 3 + 2, srcIdx);
           } else if (this.rtiType === 3) {
-            // RGB_PTM: R coeffs 0..5, G coeffs 6..11, B coeffs 12..17
             r = sample(layer, srcIdx);
             g = sample(6 + layer, srcIdx);
             b = sample(12 + layer, srcIdx);
           } else {
-            // HSH: R coeffs 0..n-1, G coeffs n..2n-1, B coeffs 2n..3n-1
             r = sample(layer, srcIdx);
             g = sample(this.numCoeffs + layer, srcIdx);
             b = sample(2 * this.numCoeffs + layer, srcIdx);
@@ -355,7 +349,7 @@ export class TiffTileLoader {
         }
       }
 
-      const tex = new THREE.DataTexture(buf, tileW, tileH, THREE.RGBAFormat);
+      const tex = new THREE.DataTexture(buf, texW, texH, THREE.RGBAFormat);
       tex.colorSpace = THREE.NoColorSpace;
       if (this.rtiType === 5) {
         tex.minFilter = THREE.LinearFilter;

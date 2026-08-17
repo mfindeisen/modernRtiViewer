@@ -267,6 +267,9 @@ export function useRtiViewer({
   async function onUrlChange(newUrl: string) {
     if (!isMounted || !newUrl || newUrl === loadedUrl) return;
     loadedUrl = newUrl;
+    if (typeof window !== 'undefined' && window.location.hash) {
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+    }
     try {
       await loadDataset();
     } catch (err: unknown) {

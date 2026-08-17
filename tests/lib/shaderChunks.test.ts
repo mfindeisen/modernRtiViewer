@@ -36,4 +36,24 @@ describe('shaderChunks', () => {
     const { RgbPtmMaterial } = await import('@/lib/RtiShaders.js');
     expect(RgbPtmMaterial).toBeTypeOf('function');
   });
+
+  it('evaluates nine HSH coefficient layers when present', async () => {
+    const THREE = await import('three');
+    const { HshShaderMaterial } = await import('@/lib/RtiShaders.js');
+    const tex = new THREE.Texture();
+    const textures = Array.from({ length: 9 }, () => tex);
+    const material = HshShaderMaterial(
+      textures,
+      new THREE.Vector3(0, 0, 1),
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      [0, 1, 2, 3, 4, 5, 6, 7, 8],
+      new THREE.Vector4(),
+      new THREE.Vector3(1, 1, 1),
+    );
+    expect(material.fragmentShader).toContain('tex8');
+    expect(material.fragmentShader).toContain('uCoeffCount');
+    expect(material.uniforms.uCoeffCount.value).toBe(9);
+    expect(material.uniforms.uBiasHi.value.x).toBe(4);
+    expect(material.uniforms.uBias8.value).toBe(8);
+  });
 });

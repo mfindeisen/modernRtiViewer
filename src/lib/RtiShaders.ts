@@ -7,8 +7,66 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
   uniform sampler2D tex1;
   uniform sampler2D tex2;
   uniform sampler2D tex3;
+  uniform sampler2D tex4;
+  uniform sampler2D tex5;
+  uniform sampler2D tex6;
+  uniform sampler2D tex7;
+  uniform sampler2D tex8;
   uniform vec4 uBias;
   uniform vec4 uScale;
+  uniform vec4 uBiasHi;
+  uniform vec4 uScaleHi;
+  uniform float uBias8;
+  uniform float uScale8;
+  uniform int uCoeffCount;
+
+  vec3 unpackCoeff(sampler2D tex, float bias, float scale) {
+    return texture2D(tex, vUv).xyz * bias + scale;
+  }
+
+  vec3 evaluateHsh(vec3 L) {
+    float cosTheta = L.z;
+    float cosTheta2 = cosTheta * cosTheta;
+
+    float phi = 0.0;
+    if (abs(L.x) > 0.0001 || abs(L.y) > 0.0001) {
+      phi = atan(L.y, L.x);
+      if (phi < 0.0) phi += 2.0 * 3.14159265;
+    }
+
+    float cosPhi = cos(phi);
+    float sinPhi = sin(phi);
+    float sin2Phi = sin(2.0 * phi);
+    float ring = sqrt(max(0.0, cosTheta - cosTheta2));
+
+    float l0 = 1.0 / sqrt(2.0 * 3.14159265);
+    float l1 = sqrt(6.0 / 3.14159265) * (cosPhi * ring);
+    float l2 = sqrt(3.0 / (2.0 * 3.14159265)) * (-1.0 + 2.0 * cosTheta);
+    float l3 = sqrt(6.0 / 3.14159265) * (ring * sinPhi);
+
+    vec3 c0 = unpackCoeff(tex0, uBias.x, uScale.x);
+    vec3 c1 = unpackCoeff(tex1, uBias.y, uScale.y);
+    vec3 c2 = unpackCoeff(tex2, uBias.z, uScale.z);
+    vec3 c3 = unpackCoeff(tex3, uBias.w, uScale.w);
+    vec3 color = c0 * l0 + c1 * l1 + c2 * l2 + c3 * l3;
+
+    if (uCoeffCount > 4) {
+      float l4 = sqrt(30.0 / 3.14159265) * (cos(2.0 * phi) * (-cosTheta + cosTheta2));
+      float l5 = sqrt(30.0 / 3.14159265) * (cosPhi * (-1.0 + 2.0 * cosTheta) * ring);
+      float l6 = sqrt(5.0 / (2.0 * 3.14159265)) * (1.0 - 6.0 * cosTheta + 6.0 * cosTheta2);
+      float l7 = sqrt(30.0 / 3.14159265) * ((-1.0 + 2.0 * cosTheta) * ring * sinPhi);
+      float l8 = sqrt(30.0 / 3.14159265) * ((-cosTheta + cosTheta2) * sin2Phi);
+
+      vec3 c4 = unpackCoeff(tex4, uBiasHi.x, uScaleHi.x);
+      vec3 c5 = unpackCoeff(tex5, uBiasHi.y, uScaleHi.y);
+      vec3 c6 = unpackCoeff(tex6, uBiasHi.z, uScaleHi.z);
+      vec3 c7 = unpackCoeff(tex7, uBiasHi.w, uScaleHi.w);
+      vec3 c8 = unpackCoeff(tex8, uBias8, uScale8);
+      color += c4 * l4 + c5 * l5 + c6 * l6 + c7 * l7 + c8 * l8;
+    }
+
+    return color;
+  }
 
   void main() {
     if (outsideBounds(vWorldPos, uBounds)) {
@@ -16,34 +74,10 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
       return;
     }
 
-    vec3 c0 = texture2D(tex0, vUv).xyz;
-    vec3 c1 = texture2D(tex1, vUv).xyz;
-    vec3 c2 = texture2D(tex2, vUv).xyz;
-    vec3 c3 = texture2D(tex3, vUv).xyz;
-
-    c0 = c0 * uBias.x + uScale.x;
-    c1 = c1 * uBias.y + uScale.y;
-    c2 = c2 * uBias.z + uScale.z;
-    c3 = c3 * uBias.w + uScale.w;
-
-    float cosTheta = uLightDir.z;
-    float cosTheta2 = cosTheta * cosTheta;
-
-    float phi = 0.0;
-    if (abs(uLightDir.x) > 0.0001 || abs(uLightDir.y) > 0.0001) {
-      phi = atan(uLightDir.y, uLightDir.x);
-      if (phi < 0.0) phi += 2.0 * 3.14159265;
-    }
-
-    float cosPhi = cos(phi);
-    float sinPhi = sin(phi);
-
-    float l0 = 1.0 / sqrt(2.0 * 3.14159265);
-    float l1 = sqrt(6.0 / 3.14159265) * (cosPhi * sqrt(max(0.0, cosTheta - cosTheta2)));
-    float l2 = sqrt(3.0 / (2.0 * 3.14159265)) * (-1.0 + 2.0 * cosTheta);
-    float l3 = sqrt(6.0 / 3.14159265) * (sqrt(max(0.0, cosTheta - cosTheta2)) * sinPhi);
-
-    vec3 color = c0 * l0 + c1 * l1 + c2 * l2 + c3 * l3;
+    vec3 color = evaluateHsh(uLightDir);
+    vec3 c1 = unpackCoeff(tex1, uBias.y, uScale.y);
+    vec3 c2 = unpackCoeff(tex2, uBias.z, uScale.z);
+    vec3 c3 = unpackCoeff(tex3, uBias.w, uScale.w);
 
     if (uRenderMode == 0) {
       gl_FragColor = vec4(applyColorGain(color), 1.0);
@@ -64,15 +98,7 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
       vec3 N = normalize(vec3(nx, ny, abs(nz) + 0.1));
       gl_FragColor = vec4(applyColorGain(slopeHeatmap(N)), 1.0);
     } else if (uRenderMode == 4) {
-      vec3 L2 = vec3(-uLightDir.x, -uLightDir.y, uLightDir.z);
-      float phi2 = 0.0;
-      if (abs(L2.x) > 0.0001 || abs(L2.y) > 0.0001) {
-        phi2 = atan(L2.y, L2.x);
-        if (phi2 < 0.0) phi2 += 2.0 * 3.14159265;
-      }
-      float l1_2 = sqrt(6.0 / 3.14159265) * (cos(phi2) * sqrt(max(0.0, cosTheta - cosTheta2)));
-      float l3_2 = sqrt(6.0 / 3.14159265) * (sqrt(max(0.0, cosTheta - cosTheta2)) * sin(phi2));
-      vec3 color2 = c0 * l0 + c1 * l1_2 + c2 * l2 + c3 * l3_2;
+      vec3 color2 = evaluateHsh(vec3(-uLightDir.x, -uLightDir.y, uLightDir.z));
       vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
       gl_FragColor = vec4(applyColorGain(dualColor), 1.0);
     }
@@ -343,11 +369,21 @@ export const HshShaderMaterial = (
   uniforms: {
     uLightDir: { value: lightDir },
     tex0: { value: textures[0] || null },
-    tex1: { value: textures[1] || null },
-    tex2: { value: textures[2] || null },
-    tex3: { value: textures[3] || null },
+    tex1: { value: textures[1] || textures[0] || null },
+    tex2: { value: textures[2] || textures[0] || null },
+    tex3: { value: textures[3] || textures[0] || null },
+    tex4: { value: textures[4] || textures[0] || null },
+    tex5: { value: textures[5] || textures[0] || null },
+    tex6: { value: textures[6] || textures[0] || null },
+    tex7: { value: textures[7] || textures[0] || null },
+    tex8: { value: textures[8] || textures[0] || null },
     uBias: { value: new THREE.Vector4(bias[0] || 0, bias[1] || 0, bias[2] || 0, bias[3] || 0) },
     uScale: { value: new THREE.Vector4(scale[0] || 0, scale[1] || 0, scale[2] || 0, scale[3] || 0) },
+    uBiasHi: { value: new THREE.Vector4(bias[4] || 0, bias[5] || 0, bias[6] || 0, bias[7] || 0) },
+    uScaleHi: { value: new THREE.Vector4(scale[4] || 0, scale[5] || 0, scale[6] || 0, scale[7] || 0) },
+    uBias8: { value: bias[8] || 0 },
+    uScale8: { value: scale[8] || 0 },
+    uCoeffCount: { value: textures.length },
     uBounds: { value: bounds },
     uRenderMode: { value: 0 },
     uSpecularExponent: { value: 10.0 },
@@ -358,6 +394,12 @@ export const HshShaderMaterial = (
   transparent: true,
 });
 
+function padCoeffArray(values: number[] | undefined, length: number, fill: number): number[] {
+  const next = Array.isArray(values) ? values.slice(0, length) : [];
+  while (next.length < length) next.push(fill);
+  return next;
+}
+
 export const LrgbPtmMaterial = (
   textures: THREE.Texture[],
   lightDir: THREE.Vector3,
@@ -366,8 +408,8 @@ export const LrgbPtmMaterial = (
   bounds: THREE.Vector4,
   colorGain: THREE.Vector3,
 ) => {
-  while (bias.length < 6) bias.push(0);
-  while (scale.length < 6) scale.push(1);
+  const paddedBias = padCoeffArray(bias, 6, 0);
+  const paddedScale = padCoeffArray(scale, 6, 1);
 
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -375,10 +417,10 @@ export const LrgbPtmMaterial = (
       tex0: { value: textures[0] || null },
       tex1: { value: textures[1] || null },
       tex2: { value: textures[2] || null },
-      uBias: { value: new THREE.Vector3(bias[0], bias[1], bias[2]) },
-      uBias2: { value: new THREE.Vector3(bias[3], bias[4], bias[5]) },
-      uScale: { value: new THREE.Vector3(scale[0], scale[1], scale[2]) },
-      uScale2: { value: new THREE.Vector3(scale[3], scale[4], scale[5]) },
+      uBias: { value: new THREE.Vector3(paddedBias[0], paddedBias[1], paddedBias[2]) },
+      uBias2: { value: new THREE.Vector3(paddedBias[3], paddedBias[4], paddedBias[5]) },
+      uScale: { value: new THREE.Vector3(paddedScale[0], paddedScale[1], paddedScale[2]) },
+      uScale2: { value: new THREE.Vector3(paddedScale[3], paddedScale[4], paddedScale[5]) },
       uBounds: { value: bounds },
       uRenderMode: { value: 0 },
       uSpecularExponent: { value: 10.0 },
@@ -398,8 +440,8 @@ export const RgbPtmMaterial = (
   bounds: THREE.Vector4,
   colorGain: THREE.Vector3,
 ) => {
-  while (bias.length < 6) bias.push(0);
-  while (scale.length < 6) scale.push(1);
+  const paddedBias = padCoeffArray(bias, 6, 0);
+  const paddedScale = padCoeffArray(scale, 6, 1);
 
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -410,10 +452,10 @@ export const RgbPtmMaterial = (
       tex3: { value: textures[3] || null },
       tex4: { value: textures[4] || null },
       tex5: { value: textures[5] || null },
-      uBias: { value: new THREE.Vector3(bias[0], bias[1], bias[2]) },
-      uBias2: { value: new THREE.Vector3(bias[3], bias[4], bias[5]) },
-      uScale: { value: new THREE.Vector3(scale[0], scale[1], scale[2]) },
-      uScale2: { value: new THREE.Vector3(scale[3], scale[4], scale[5]) },
+      uBias: { value: new THREE.Vector3(paddedBias[0], paddedBias[1], paddedBias[2]) },
+      uBias2: { value: new THREE.Vector3(paddedBias[3], paddedBias[4], paddedBias[5]) },
+      uScale: { value: new THREE.Vector3(paddedScale[0], paddedScale[1], paddedScale[2]) },
+      uScale2: { value: new THREE.Vector3(paddedScale[3], paddedScale[4], paddedScale[5]) },
       uBounds: { value: bounds },
       uRenderMode: { value: 0 },
       uSpecularExponent: { value: 10.0 },

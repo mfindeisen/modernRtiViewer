@@ -112,5 +112,7 @@ describe('ModernRtiViewerElement', () => {
 
     expect(unmountSpy).toHaveBeenCalled();
     expect(host.app).toBeNull();
+    expect(host.mountPoint).toBeUndefined();
+    expect(host.querySelector('div')).toBeNull();
   });
 });

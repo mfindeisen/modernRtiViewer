@@ -5,6 +5,7 @@ import {
   worldToScreen,
   screenToWorld,
   imageNormRadiusToScreen,
+  imageNormCircleRadius,
 } from '../lib/annotationCoords.js';
 import {
   ANNOTATION_SHAPE_OPTIONS,
@@ -238,11 +239,12 @@ export function useAnnotations({
     if (draft.type === 'circle') {
       const centerArr = draft.geometry.center as number[];
       const center = { x: centerArr[0], y: centerArr[1] };
+      const qt = quadtree.value;
       draftAnnotation.value = {
         type: 'circle',
         geometry: {
           center: draft.geometry.center,
-          radius: Math.hypot(point.x - center.x, point.y - center.y),
+          radius: qt ? imageNormCircleRadius(center, point, qt) : 0,
         },
       };
     } else if (draft.type === 'rectangle') {

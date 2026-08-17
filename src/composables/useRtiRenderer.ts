@@ -44,6 +44,8 @@ export function useRtiRenderer({
   const tileMeshes = new Map<number, THREE.Mesh<THREE.PlaneGeometry, THREE.Material>>();
   const textureLoader = new THREE.TextureLoader();
   const textureCache = createTextureCache();
+  let contextLost = false;
+  let glCanvas: HTMLCanvasElement | null = null;
 
   const meshUniforms = createMeshUniformSync({
     tileMeshes,
@@ -79,6 +81,42 @@ export function useRtiRenderer({
     }
 
   let loadTileMesh: (node: QuadtreeNode, worldBox: WorldBox) => void = () => {};
+  let disposeTileLoader = () => {};
+
+  function handleContextLost(event: Event) {
+    event.preventDefault();
+    contextLost = true;
+    if (animationFrameId) {
+      cancelAnimationFrame(animationFrameId);
+      animationFrameId = null;
+    }
+    renderLoopActive = false;
+  }
+
+  function clearGpuMeshes() {
+    const currentScene = scene.value;
+    for (const mesh of tileMeshes.values()) {
+      currentScene?.remove(mesh);
+      mesh.geometry.dispose();
+      if (mesh.material) mesh.material.dispose();
+    }
+    tileMeshes.clear();
+    loadingTileIds.clear();
+    textureCache.dispose();
+    activeMeshesCount.value = 0;
+  }
+
+  function handleContextRestored() {
+    contextLost = false;
+    clearGpuMeshes();
+    if (renderer.value && containerWrapper.value && rtiInfo.value) {
+      const width = containerWrapper.value.clientWidth;
+      const height = containerWrapper.value.clientHeight;
+      renderer.value.setSize(width, height);
+      renderer.value.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    }
+    requestRender();
+  }
 
   async function fetchRtiInfo() {
     const info = await loadRtiInfo(url.value, {
@@ -153,6 +191,9 @@ export function useRtiRenderer({
     newRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.value = newRenderer;
     mountContainer.appendChild(newRenderer.domElement);
+    glCanvas = newRenderer.domElement;
+    glCanvas.addEventListener('webglcontextlost', handleContextLost);
+    glCanvas.addEventListener('webglcontextrestored', handleContextRestored);
 
     const newControls = new OrbitControls(newCamera, newRenderer.domElement);
     controls.value = newControls;
@@ -170,7 +211,7 @@ export function useRtiRenderer({
     newControls.dampingFactor = 0.05;
     newControls.enabled = getPanEnabled();
 
-    ({ loadTileMesh } = createTileMeshLoader({
+    ({ loadTileMesh, dispose: disposeTileLoader } = createTileMeshLoader({
       scene,
       quadtree,
       rtiInfo,
@@ -206,6 +247,10 @@ export function useRtiRenderer({
 
   function tick() {
     animationFrameId = null;
+    if (contextLost) {
+      renderLoopActive = false;
+      return;
+    }
     const currentControls = controls.value;
     const damping = currentControls ? currentControls.update() : false;
     const shouldDraw = needsRender || damping || loadingTileIds.size > 0;
@@ -228,6 +273,13 @@ export function useRtiRenderer({
     window.removeEventListener('resize', resize);
     containerResizeObserver?.disconnect();
     containerResizeObserver = null;
+    if (glCanvas) {
+      glCanvas.removeEventListener('webglcontextlost', handleContextLost);
+      glCanvas.removeEventListener('webglcontextrestored', handleContextRestored);
+      glCanvas = null;
+    }
+    contextLost = false;
+    disposeTileLoader();
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     renderLoopActive = false;
@@ -328,16 +380,14 @@ export function useRtiRenderer({
       }
     }
 
-    if (loadingTileIds.size === 0) {
-      for (const [id, mesh] of tileMeshes.entries()) {
-        if (!visibleIds.has(id)) {
-          currentScene.remove(mesh);
-          mesh.geometry.dispose();
-          if (mesh.material) {
-            mesh.material.dispose();
-          }
-          tileMeshes.delete(id);
+    for (const [id, mesh] of tileMeshes.entries()) {
+      if (!visibleIds.has(id) && !loadingTileIds.has(id)) {
+        currentScene.remove(mesh);
+        mesh.geometry.dispose();
+        if (mesh.material) {
+          mesh.material.dispose();
         }
+        tileMeshes.delete(id);
       }
     }
 

@@ -86,3 +86,16 @@ export function imageNormRadiusToScreen(
   if (!cScreen || !eScreen) return 0;
   return Math.abs(eScreen.x - cScreen.x);
 }
+
+/** Store circle radius in width-normalized units so overlay circles stay round. */
+export function imageNormCircleRadius(
+  center: { x: number; y: number },
+  point: { x: number; y: number },
+  quadtree: QuadtreeManager,
+): number {
+  const cWorld = imageNormToWorld(center.x, center.y, quadtree);
+  const pWorld = imageNormToWorld(point.x, point.y, quadtree);
+  const bounds = getImageWorldBounds(quadtree);
+  if (!cWorld || !pWorld || !bounds || bounds.width <= 0) return 0;
+  return Math.hypot(pWorld.x - cWorld.x, pWorld.y - cWorld.y) / bounds.width;
+}

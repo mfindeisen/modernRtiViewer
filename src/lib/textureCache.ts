@@ -2,6 +2,11 @@ import type * as THREE from 'three';
 
 export const DEFAULT_TEXTURE_CACHE_SIZE = 100;
 
+export type TextureCacheSetOptions = {
+  /** Cache keys whose GPU textures must not be disposed (still on screen). */
+  retain?: Iterable<string>;
+};
+
 export function createTextureCache(maxSize = DEFAULT_TEXTURE_CACHE_SIZE) {
   const cache = new Map<string, THREE.Texture[]>();
 
@@ -13,14 +18,22 @@ export function createTextureCache(maxSize = DEFAULT_TEXTURE_CACHE_SIZE) {
     return textures;
   }
 
-  function set(key: string, textures: THREE.Texture[]) {
+  function set(key: string, textures: THREE.Texture[], options?: TextureCacheSetOptions) {
     cache.set(key, textures);
+    const retain = new Set(options?.retain);
+    retain.add(key);
+
     while (cache.size > maxSize) {
-      const oldestKey = cache.keys().next().value;
-      if (oldestKey === undefined) break;
-      const oldestTextures = cache.get(oldestKey);
-      if (oldestTextures) oldestTextures.forEach((tex) => tex.dispose?.());
-      cache.delete(oldestKey);
+      let evicted = false;
+      for (const oldestKey of cache.keys()) {
+        if (retain.has(oldestKey)) continue;
+        const oldestTextures = cache.get(oldestKey);
+        if (oldestTextures) oldestTextures.forEach((tex) => tex.dispose?.());
+        cache.delete(oldestKey);
+        evicted = true;
+        break;
+      }
+      if (!evicted) break;
     }
   }
 
