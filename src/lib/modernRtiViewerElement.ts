@@ -12,9 +12,10 @@ export class ModernRtiViewerElement extends HTMLElement {
   _setShareUrl?: (val: string | null) => void;
   _setAnnotationEnabled?: (val: boolean) => void;
   _setTileFormat?: (val: string | null) => void;
+  _setDebug?: (val: boolean) => void;
 
   static get observedAttributes() {
-    return ['url', 'share-url', 'annotation-enabled', 'tile-format'];
+    return ['url', 'share-url', 'annotation-enabled', 'tile-format', 'debug'];
   }
 
   connectedCallback() {
@@ -32,6 +33,7 @@ export class ModernRtiViewerElement extends HTMLElement {
         const shareUrl = ref(host.getAttribute('share-url') || '');
         const annotationEnabled = ref(parseAnnotationEnabledAttr(host.getAttribute('annotation-enabled')));
         const tileFormat = ref(host.getAttribute('tile-format') || '');
+        const debug = ref(host.getAttribute('debug') === 'true');
 
         host._setUrl = (val) => {
           url.value = val ?? '';
@@ -45,12 +47,16 @@ export class ModernRtiViewerElement extends HTMLElement {
         host._setTileFormat = (val) => {
           tileFormat.value = val ?? '';
         };
+        host._setDebug = (val) => {
+          debug.value = val;
+        };
 
         return () => h(RtiViewer, {
           url: url.value,
           shareUrl: shareUrl.value,
           annotationEnabled: annotationEnabled.value,
           tileFormat: tileFormat.value,
+          debug: debug.value ? 'true' : undefined,
           onAnnotationCreate(payload: AnnotationCreatePayload) {
             host.dispatchEvent(new CustomEvent('annotation-create', { detail: payload, bubbles: true }));
           },
@@ -81,6 +87,10 @@ export class ModernRtiViewerElement extends HTMLElement {
     }
     if (name === 'tile-format') {
       this._setTileFormat?.(newValue);
+      return;
+    }
+    if (name === 'debug') {
+      this._setDebug?.(newValue === 'true');
     }
   }
 
@@ -93,6 +103,7 @@ export class ModernRtiViewerElement extends HTMLElement {
     this._setShareUrl = undefined;
     this._setAnnotationEnabled = undefined;
     this._setTileFormat = undefined;
+    this._setDebug = undefined;
   }
 }
 

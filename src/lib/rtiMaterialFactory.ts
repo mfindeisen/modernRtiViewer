@@ -30,5 +30,10 @@ export function createRtiMaterial({ rtiInfo, textures, lightDir, bounds, colorGa
   if (rtiInfo.type === 2) {
     return LrgbPtmMaterial(textures, lightDir, rtiInfo.bias ?? [], rtiInfo.scale ?? [], bounds, colorGain);
   }
+  if (rtiInfo.type === 3) {
+    throw new Error(
+      'RGB PTM datasets are not supported yet. Re-process with LRGB PTM or HSH (rtiprep default).',
+    );
+  }
   return ImageShaderMaterial(textures[0], bounds, colorGain);
 }
