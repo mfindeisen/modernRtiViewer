@@ -9,6 +9,22 @@ import { openTiffDataset } from '../lib/openTiffDataset.js';
 import { createTextureCache } from '../lib/textureCache.js';
 import { createMeshUniformSync } from '../lib/meshUniforms.js';
 import { createTileMeshLoader } from '../lib/tileMeshLoader.js';
+import { clampExportSize, pixelsToPngDataUrl, recordCanvasWebm } from '../lib/exportView.js';
+import { createLineDrawingPass } from '../lib/lineDrawingPass.js';
+import { FRONT_LIGHT } from '../lib/lightDirection.js';
+import {
+  PACKED_NORMAL_RENDER_MODE,
+  RENDER_MODE_LINE_DRAWING,
+  RENDER_MODE_NORMAL_BUFFER,
+  supportsMeshExport,
+} from '../lib/rtiEnhancements.js';
+import {
+  MAX_MESH_DIMENSION,
+  buildSurfaceFromPackedNormals,
+  pixelSizeFromCalibration,
+  type MeshScale,
+  type ReconstructedSurface,
+} from '../lib/surfaceFromNormals.js';
 import type { QuadtreeNode, RtiInfo, ParsedViewHash, WorldBox } from '../types/rti.js';
 import type { TiffTileLoader } from '../lib/TiffTileLoader.js';
 import type { UseRtiRendererOptions } from './types.js';
@@ -21,7 +37,15 @@ export function useRtiRenderer({
   lightDir,
   renderMode,
   specularExponent,
+  specularIntensity,
+  diffuseGain,
+  unsharpAmount,
+  dualLinked,
+  lightDir2,
   colorGainVector,
+  ridgeThreshold,
+  valleyThreshold,
+  lineWidth,
   getPanEnabled,
   onResize,
   onFrame,
@@ -35,6 +59,7 @@ export function useRtiRenderer({
   const quadtree = shallowRef<QuadtreeManager | null>(null);
   const tiffLoader = shallowRef<TiffTileLoader | null>(null);
   const activeMeshesCount = ref(0);
+  const pendingTileCount = ref(0);
 
   let animationFrameId: number | null = null;
   let renderLoopActive = false;
@@ -46,6 +71,9 @@ export function useRtiRenderer({
   const textureCache = createTextureCache();
   let contextLost = false;
   let glCanvas: HTMLCanvasElement | null = null;
+  let tileCameraOverride: THREE.OrthographicCamera | null = null;
+  let tileScreenHeightOverride: number | null = null;
+  const lineDrawingPass = createLineDrawingPass();
 
   const meshUniforms = createMeshUniformSync({
     tileMeshes,
@@ -53,12 +81,17 @@ export function useRtiRenderer({
     renderMode,
     specularExponent,
     colorGainVector,
+    enhancements: (diffuseGain && unsharpAmount && specularIntensity && lightDir2 && dualLinked)
+      ? { diffuseGain, unsharpAmount, specularIntensity, lightDir2, dualLinked }
+      : undefined,
   });
 
     const {
       syncMeshUniforms,
+      forEachMeshUniform,
       setRenderModeOnMeshes: setRenderModeOnMeshesBase,
       updateSpecularOnMeshes: updateSpecularOnMeshesBase,
+      updateEnhancementsOnMeshes: updateEnhancementsOnMeshesBase,
       updateColorGainOnMeshes: updateColorGainOnMeshesBase,
       setReferenceLightOnMeshes,
       setNeutralColorGainOnMeshes,
@@ -72,6 +105,11 @@ export function useRtiRenderer({
 
     function updateSpecularOnMeshes() {
       updateSpecularOnMeshesBase();
+      requestRender();
+    }
+
+    function updateEnhancementsOnMeshes() {
+      updateEnhancementsOnMeshesBase();
       requestRender();
     }
 
@@ -254,13 +292,14 @@ export function useRtiRenderer({
     }
     const currentControls = controls.value;
     const damping = currentControls ? currentControls.update() : false;
+    pendingTileCount.value = loadingTileIds.size;
     const shouldDraw = needsRender || damping || loadingTileIds.size > 0;
     needsRender = false;
 
     if (shouldDraw && renderer.value && scene.value && camera.value) {
       updateTiles();
       onFrame?.();
-      renderer.value.render(scene.value, camera.value);
+      drawFrame(camera.value);
     }
 
     if (damping || loadingTileIds.size > 0 || needsRender) {
@@ -281,6 +320,7 @@ export function useRtiRenderer({
     }
     contextLost = false;
     disposeTileLoader();
+    lineDrawingPass.dispose();
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
     renderLoopActive = false;
@@ -374,9 +414,10 @@ export function useRtiRenderer({
   function updateTiles() {
     if (!quadtree.value || !camera.value || !renderer.value || !scene.value) return;
 
-    const cam = camera.value;
+    const cam = tileCameraOverride || camera.value;
     const currentScene = scene.value;
     const currentRenderer = renderer.value;
+    if (!cam || !currentScene || !currentRenderer) return;
     const frustumBounds = {
       minX: cam.position.x + cam.left / cam.zoom,
       maxX: cam.position.x + cam.right / cam.zoom,
@@ -385,7 +426,7 @@ export function useRtiRenderer({
     };
 
     const worldHeight = (cam.top - cam.bottom) / cam.zoom;
-    const screenHeight = currentRenderer.domElement.clientHeight;
+    const screenHeight = tileScreenHeightOverride ?? currentRenderer.domElement.clientHeight;
     const pixelsPerWorldUnit = screenHeight / worldHeight;
     const projectedTileSize = quadtree.value.maxSize * pixelsPerWorldUnit;
 
@@ -428,17 +469,222 @@ export function useRtiRenderer({
     }
 
     activeMeshesCount.value = tileMeshes.size;
+    pendingTileCount.value = loadingTileIds.size;
+  }
+
+  function lineDrawingParams() {
+    return {
+      ridgeThreshold: ridgeThreshold?.value ?? 0.14,
+      valleyThreshold: valleyThreshold?.value ?? 0.1,
+      lineWidth: lineWidth?.value ?? 1.5,
+    };
+  }
+
+  function renderLineDrawing(
+    cam: THREE.Camera,
+    outputTarget: THREE.WebGLRenderTarget | null = null,
+    size?: { width: number; height: number },
+  ) {
+    if (!renderer.value || !scene.value) return;
+    const restoreMode = renderMode.value;
+    lineDrawingPass.render(renderer.value, scene.value, cam, {
+      ...lineDrawingParams(),
+      setEncodeNormals: (enabled) => {
+        setRenderModeOnMeshesBase(enabled ? RENDER_MODE_NORMAL_BUFFER : restoreMode);
+      },
+      outputTarget,
+      width: size?.width,
+      height: size?.height,
+    });
+  }
+
+  function drawFrame(
+    cam: THREE.Camera,
+    options?: { lineDrawing?: boolean; skipLineDrawing?: boolean; outputTarget?: THREE.WebGLRenderTarget | null; width?: number; height?: number },
+  ) {
+    if (!renderer.value || !scene.value) return;
+    const useDrawing = !options?.skipLineDrawing
+      && (options?.lineDrawing || renderMode.value === RENDER_MODE_LINE_DRAWING);
+    if (useDrawing) {
+      renderLineDrawing(
+        cam,
+        options?.outputTarget ?? null,
+        options?.width != null && options?.height != null
+          ? { width: options.width, height: options.height }
+          : undefined,
+      );
+      return;
+    }
+    renderer.value.setRenderTarget(options?.outputTarget ?? null);
+    renderer.value.render(scene.value, cam);
+    if (options?.outputTarget) renderer.value.setRenderTarget(null);
   }
 
   function renderFrame() {
     if (!renderer.value || !scene.value || !camera.value) return;
-    renderer.value.render(scene.value, camera.value);
+    drawFrame(camera.value);
   }
 
   function exportPng() {
     if (!renderer.value) return null;
     renderFrame();
     return renderer.value.domElement.toDataURL('image/png');
+  }
+
+  function readPixelAtScreen(clientX: number, clientY: number) {
+    if (!renderer.value) return null;
+    renderFrame();
+    const pixel = new Uint8Array(4);
+    const canvas = renderer.value.domElement;
+    const rect = canvas.getBoundingClientRect();
+    const pixelRatio = renderer.value.getPixelRatio();
+    const x = Math.floor((clientX - rect.left) * pixelRatio);
+    const y = Math.floor((rect.bottom - clientY) * pixelRatio);
+    if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return null;
+    const gl = renderer.value.getContext();
+    gl.readPixels(x, y, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+    if (pixel[3] < 8) return null;
+    return { r: pixel[0] / 255, g: pixel[1] / 255, b: pixel[2] / 255 };
+  }
+
+  async function waitForTiles(timeoutMs = 20000) {
+    const started = Date.now();
+    requestRender();
+    while (Date.now() - started < timeoutMs) {
+      pendingTileCount.value = loadingTileIds.size;
+      if (loadingTileIds.size === 0) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+        if (loadingTileIds.size === 0) return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      requestRender();
+    }
+  }
+
+  async function captureFullResolutionPixels(options?: {
+    maxDim?: number;
+    renderMode?: number;
+    light?: { x: number; y: number; z: number };
+    neutralizeLook?: boolean;
+    clearAlpha?: number;
+    rawColor?: boolean;
+    lineDrawing?: boolean;
+  }) {
+    if (!renderer.value || !scene.value || !camera.value || !rtiInfo.value) return null;
+    const rti = rtiInfo.value;
+    const { width, height } = clampExportSize(rti.width, rti.height, options?.maxDim);
+    const viewSize = Math.max(rti.width, rti.height) / 2;
+    const aspect = width / height;
+    const exportCam = camera.value.clone();
+    exportCam.left = -viewSize * aspect;
+    exportCam.right = viewSize * aspect;
+    exportCam.top = viewSize;
+    exportCam.bottom = -viewSize;
+    exportCam.position.set(0, 0, 10);
+    exportCam.zoom = computeFitToViewZoom(width, height, rti.width, rti.height);
+    exportCam.updateProjectionMatrix();
+
+    tileCameraOverride = exportCam;
+    tileScreenHeightOverride = height;
+    updateTiles();
+    await waitForTiles();
+    updateTiles();
+
+    const savedLight = lightDir.value.clone();
+    const prevClear = new THREE.Color();
+    renderer.value.getClearColor(prevClear);
+    const prevAlpha = renderer.value.getClearAlpha();
+
+    try {
+      if (options?.renderMode !== undefined) setRenderModeOnMeshesBase(options.renderMode);
+      if (options?.light) {
+        restoreLightOnMeshes(new THREE.Vector3(options.light.x, options.light.y, options.light.z));
+      }
+      if (options?.neutralizeLook) {
+        setNeutralColorGainOnMeshes();
+        forEachMeshUniform((uniforms) => {
+          if (uniforms.uDiffuseGain) uniforms.uDiffuseGain.value = 1;
+          if (uniforms.uUnsharpAmount) uniforms.uUnsharpAmount.value = 0;
+          if (uniforms.uSpecularIntensity) uniforms.uSpecularIntensity.value = 0;
+        });
+      }
+      renderer.value.setClearColor(0x000000, options?.clearAlpha ?? 1);
+
+      const target = new THREE.WebGLRenderTarget(width, height, options?.rawColor
+        ? { colorSpace: THREE.NoColorSpace }
+        : undefined);
+      const useDrawing = !!options?.lineDrawing
+        || (options?.renderMode === undefined && renderMode.value === RENDER_MODE_LINE_DRAWING);
+      if (useDrawing) {
+        drawFrame(exportCam, {
+          lineDrawing: true,
+          outputTarget: target,
+          width,
+          height,
+        });
+      } else {
+        renderer.value.setRenderTarget(target);
+        renderer.value.render(scene.value, exportCam);
+      }
+      const pixels = new Uint8Array(width * height * 4);
+      renderer.value.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+      renderer.value.setRenderTarget(null);
+      target.dispose();
+      return { pixels, width, height };
+    } finally {
+      renderer.value.setClearColor(prevClear, prevAlpha);
+      setRenderModeOnMeshesBase(renderMode.value);
+      restoreLightOnMeshes(savedLight);
+      updateColorGainOnMeshesBase();
+      updateEnhancementsOnMeshesBase();
+      tileCameraOverride = null;
+      tileScreenHeightOverride = null;
+      requestRender();
+    }
+  }
+
+  async function exportFullResolution(options?: { lineDrawing?: boolean }) {
+    const captured = await captureFullResolutionPixels({ lineDrawing: options?.lineDrawing });
+    if (!captured) return null;
+    return pixelsToPngDataUrl(captured.pixels, captured.width, captured.height, true);
+  }
+
+  async function reconstructSurface(scale?: MeshScale | null): Promise<ReconstructedSurface> {
+    if (!supportsMeshExport(rtiInfo.value?.type)) {
+      throw new Error('3D export needs PTM, HSH or Neural RTI data');
+    }
+    const normals = await captureFullResolutionPixels({
+      maxDim: MAX_MESH_DIMENSION,
+      renderMode: PACKED_NORMAL_RENDER_MODE,
+      light: FRONT_LIGHT,
+      neutralizeLook: true,
+      clearAlpha: 0,
+      rawColor: true,
+    });
+    if (!normals) throw new Error('Could not capture RTI normals');
+    const color = await captureFullResolutionPixels({
+      maxDim: MAX_MESH_DIMENSION,
+      renderMode: 0,
+      light: FRONT_LIGHT,
+      neutralizeLook: true,
+      clearAlpha: 0,
+    });
+    const meshScale = scale ?? pixelSizeFromCalibration(null);
+    return buildSurfaceFromPackedNormals(
+      normals.pixels,
+      color?.pixels ?? null,
+      normals.width,
+      normals.height,
+      meshScale,
+    );
+  }
+
+  function recordOrbitVideo(durationMs: number, onTick: (elapsedMs: number) => void) {
+    if (!renderer.value) return Promise.reject(new Error('Renderer not ready'));
+    return recordCanvasWebm(renderer.value.domElement, durationMs, (elapsed) => {
+      onTick(elapsed);
+      renderFrame();
+    });
   }
 
   function sampleColorAtScreen(clientX: number, clientY: number) {
@@ -451,7 +697,7 @@ export function useRtiRenderer({
 
     const pixel = new Uint8Array(4);
     try {
-      renderFrame();
+      drawFrame(camera.value, { skipLineDrawing: true });
 
       const canvas = renderer.value.domElement;
       const rect = canvas.getBoundingClientRect();
@@ -484,6 +730,21 @@ export function useRtiRenderer({
     if (urlView.specularExponent !== undefined) {
       specularExponent.value = urlView.specularExponent;
     }
+    if (urlView.specularIntensity !== undefined && specularIntensity) {
+      specularIntensity.value = urlView.specularIntensity;
+    }
+    if (urlView.diffuseGain !== undefined && diffuseGain) {
+      diffuseGain.value = urlView.diffuseGain;
+    }
+    if (urlView.unsharpAmount !== undefined && unsharpAmount) {
+      unsharpAmount.value = urlView.unsharpAmount;
+    }
+    if (urlView.dualLinked !== undefined && dualLinked) {
+      dualLinked.value = urlView.dualLinked;
+    }
+    if (urlView.lightDir2 && lightDir2) {
+      lightDir2.value.set(urlView.lightDir2.x, urlView.lightDir2.y, urlView.lightDir2.z).normalize();
+    }
     if (urlView.colorGain) {
       colorGainVector.set(urlView.colorGain.r, urlView.colorGain.g, urlView.colorGain.b);
       requestRender();
@@ -502,6 +763,7 @@ export function useRtiRenderer({
     quadtree,
     tiffLoader,
     activeMeshesCount,
+    pendingTileCount,
     fetchRtiInfo,
     initQuadtree,
     init,
@@ -511,13 +773,18 @@ export function useRtiRenderer({
     setControlMode,
     setRenderModeOnMeshes,
     updateSpecularOnMeshes,
+    updateEnhancementsOnMeshes,
     updateColorGainOnMeshes,
     setReferenceLightOnMeshes,
     setNeutralColorGainOnMeshes,
     restoreLightOnMeshes,
     renderFrame,
     exportPng,
+    exportFullResolution,
+    reconstructSurface,
+    recordOrbitVideo,
     sampleColorAtScreen,
+    readPixelAtScreen,
     applyUrlView,
     requestRender,
     fitToView,
