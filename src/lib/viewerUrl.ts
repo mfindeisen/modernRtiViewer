@@ -39,6 +39,34 @@ export function parseViewHash(hash: string): ParsedViewHash {
     if (!Number.isNaN(spec)) result.specularExponent = spec;
   }
 
+  if (params.has('si')) {
+    const si = parseFloat(params.get('si')!);
+    if (!Number.isNaN(si)) result.specularIntensity = si;
+  }
+
+  if (params.has('dg')) {
+    const dg = parseFloat(params.get('dg')!);
+    if (!Number.isNaN(dg)) result.diffuseGain = dg;
+  }
+
+  if (params.has('us')) {
+    const us = parseFloat(params.get('us')!);
+    if (!Number.isNaN(us)) result.unsharpAmount = us;
+  }
+
+  if (params.has('lx2') && params.has('ly2')) {
+    const lx2 = parseFloat(params.get('lx2')!);
+    const ly2 = parseFloat(params.get('ly2')!);
+    if (!Number.isNaN(lx2) && !Number.isNaN(ly2)) {
+      const r2 = lx2 * lx2 + ly2 * ly2;
+      result.lightDir2 = { x: lx2, y: ly2, z: r2 <= 1.0 ? Math.sqrt(1.0 - r2) : 0 };
+    }
+  }
+
+  if (params.has('unlink')) {
+    result.dualLinked = params.get('unlink') !== '1';
+  }
+
   if (params.has('wbR') && params.has('wbG') && params.has('wbB')) {
     const wbR = parseFloat(params.get('wbR')!);
     const wbG = parseFloat(params.get('wbG')!);
@@ -63,17 +91,36 @@ export function parseViewHash(hash: string): ParsedViewHash {
 export interface BuildShareUrlState {
   camera: RtiCameraState & { zoom: number };
   lightDir: Vec3;
+  lightDir2?: Vec3;
   renderMode: number;
   colorGain: ColorGain;
   specularExponent?: number;
+  specularIntensity?: number;
+  diffuseGain?: number;
+  unsharpAmount?: number;
+  dualLinked?: boolean;
 }
 
 const DEFAULT_SHARE_SPECULAR = 10;
+const DEFAULT_SHARE_SPECULAR_INTENSITY = 0.8;
+const DEFAULT_SHARE_DIFFUSE_GAIN = 1;
+const DEFAULT_SHARE_UNSHARP = 0;
 
 /**
  * Build a shareable URL with hash-encoded viewer state.
  */
-export function buildShareUrl(baseUrl: string, { camera, lightDir, renderMode, colorGain, specularExponent }: BuildShareUrlState) {
+export function buildShareUrl(baseUrl: string, {
+  camera,
+  lightDir,
+  lightDir2,
+  renderMode,
+  colorGain,
+  specularExponent,
+  specularIntensity,
+  diffuseGain,
+  unsharpAmount,
+  dualLinked,
+}: BuildShareUrlState) {
   const params = new URLSearchParams();
   params.set('cx', camera.cx.toFixed(4));
   params.set('cy', camera.cy.toFixed(4));
@@ -84,6 +131,20 @@ export function buildShareUrl(baseUrl: string, { camera, lightDir, renderMode, c
 
   if (specularExponent !== undefined && Math.abs(specularExponent - DEFAULT_SHARE_SPECULAR) > 0.05) {
     params.set('spec', specularExponent.toFixed(1));
+  }
+  if (specularIntensity !== undefined && Math.abs(specularIntensity - DEFAULT_SHARE_SPECULAR_INTENSITY) > 0.01) {
+    params.set('si', specularIntensity.toFixed(2));
+  }
+  if (diffuseGain !== undefined && Math.abs(diffuseGain - DEFAULT_SHARE_DIFFUSE_GAIN) > 0.01) {
+    params.set('dg', diffuseGain.toFixed(2));
+  }
+  if (unsharpAmount !== undefined && Math.abs(unsharpAmount - DEFAULT_SHARE_UNSHARP) > 0.01) {
+    params.set('us', unsharpAmount.toFixed(2));
+  }
+  if (dualLinked === false && lightDir2) {
+    params.set('unlink', '1');
+    params.set('lx2', lightDir2.x.toFixed(4));
+    params.set('ly2', lightDir2.y.toFixed(4));
   }
 
   if (isWhiteBalanceActive(colorGain)) {

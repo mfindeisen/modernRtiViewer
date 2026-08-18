@@ -49,16 +49,26 @@ export interface RtiCameraState {
 
 export interface RtiViewState {
   lightDir?: Vec3;
+  lightDir2?: Vec3;
   renderMode?: number;
   specularExponent?: number;
+  specularIntensity?: number;
+  diffuseGain?: number;
+  unsharpAmount?: number;
+  dualLinked?: boolean;
   colorGain?: ColorGain;
   camera?: RtiCameraState;
 }
 
 export interface ParsedViewHash {
   lightDir?: Vec3;
+  lightDir2?: Vec3;
   renderMode?: number;
   specularExponent?: number;
+  specularIntensity?: number;
+  diffuseGain?: number;
+  unsharpAmount?: number;
+  dualLinked?: boolean;
   colorGain?: ColorGain;
   camera?: RtiCameraState;
 }
@@ -70,6 +80,7 @@ export interface Annotation {
   type: AnnotationType | string;
   geometry: Record<string, unknown>;
   color?: string;
+  strokeWidth?: number;
   [key: string]: unknown;
 }
 
@@ -77,6 +88,7 @@ export interface AnnotationCreatePayload {
   type: AnnotationType | string;
   geometry: Record<string, unknown>;
   color: string;
+  strokeWidth: number;
   rtiView: RtiViewState;
 }
 

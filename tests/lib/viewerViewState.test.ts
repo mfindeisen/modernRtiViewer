@@ -20,18 +20,16 @@ describe('captureRtiView', () => {
       } as OrbitControls,
     });
 
-    expect(view).toEqual({
-      lightDir: { x: 0.1, y: 0.2, z: 0.97 },
-      renderMode: 2,
-      specularExponent: 12,
-      colorGain: { r: 1.1, g: 0.9, b: 1 },
-      camera: {
-        cx: 5,
-        cy: -3,
-        zoom: 1.5,
-        targetX: 5,
-        targetY: -3,
-      },
+    expect(view.lightDir).toEqual({ x: 0.1, y: 0.2, z: 0.97 });
+    expect(view.renderMode).toBe(2);
+    expect(view.specularExponent).toBe(12);
+    expect(view.colorGain).toEqual({ r: 1.1, g: 0.9, b: 1 });
+    expect(view.camera).toEqual({
+      cx: 5,
+      cy: -3,
+      zoom: 1.5,
+      targetX: 5,
+      targetY: -3,
     });
   });
 });
