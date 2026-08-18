@@ -2,6 +2,9 @@
 
 export const MAX_LIGHT_RADIUS = 0.95;
 
+/** Frontal light: HUD shows 0.00 0.00, vector (0, 0, 1). */
+export const FRONT_LIGHT = { x: 0, y: 0, z: 1 } as const;
+
 /**
  * Map normalized UV coordinates (0–1) to a unit light direction.
  */

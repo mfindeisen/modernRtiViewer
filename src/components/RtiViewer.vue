@@ -87,12 +87,21 @@
       />
 
       <LightCompass ref="compassComponentRef" :light-dir="lightDir" />
+      <ViewerShortcutsPanel
+        :open="showShortcuts"
+        :annotation-enabled="annotationEnabled"
+        :max-render-mode="rtiInfo?.type === 5 ? 5 : 4"
+        @close="showShortcuts = false"
+      />
       <ViewerHud
         :visible="!loading && !error"
         :zoom-percent="hudZoomPercent"
         :light-x="hudLightX"
         :light-y="hudLightY"
+        :shortcuts-open="showShortcuts"
         @fit="fitToView"
+        @reset-light="resetLight"
+        @toggle-shortcuts="showShortcuts = !showShortcuts"
       />
     </div>
   </div>
@@ -107,6 +116,7 @@ import ViewerWhiteBalancePanel from './ViewerWhiteBalancePanel.vue';
 import ViewerGlossyPanel from './ViewerGlossyPanel.vue';
 import LightCompass from './LightCompass.vue';
 import ViewerHud from './ViewerHud.vue';
+import ViewerShortcutsPanel from './ViewerShortcutsPanel.vue';
 import AnnotationOverlay from './AnnotationOverlay.vue';
 import { useRtiViewer } from '../composables/useRtiViewer.js';
 
@@ -201,6 +211,8 @@ const {
   toggleFullscreen,
   setMode,
   fitToView,
+  resetLight,
+  showShortcuts,
   hudZoomPercent,
   hudLightX,
   hudLightY,

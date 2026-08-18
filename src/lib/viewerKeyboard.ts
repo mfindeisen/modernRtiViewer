@@ -6,8 +6,57 @@ export type ViewerKeyboardCommand =
   | { type: 'nudge-light'; dx: number; dy: number }
   | { type: 'zoom'; factor: number }
   | { type: 'fit' }
+  | { type: 'reset-light' }
   | { type: 'export' }
+  | { type: 'shortcuts' }
   | { type: 'escape' };
+
+export interface ViewerShortcutItem {
+  keys: string[];
+  label: string;
+}
+
+export interface ViewerShortcutGroup {
+  title: string;
+  items: ViewerShortcutItem[];
+}
+
+export function viewerShortcutGroups(options: {
+  annotationEnabled: boolean;
+  maxRenderMode: number;
+}): ViewerShortcutGroup[] {
+  const tools: ViewerShortcutItem[] = [
+    { keys: ['H'], label: 'Pan' },
+    { keys: ['L'], label: 'Light' },
+    { keys: ['W'], label: 'White balance' },
+  ];
+  if (options.annotationEnabled) {
+    tools.push({ keys: ['A'], label: 'Annotate' });
+  }
+
+  const renderKeys = options.maxRenderMode >= 5 ? '1–6' : '1–5';
+
+  return [
+    { title: 'Tools', items: tools },
+    {
+      title: 'View',
+      items: [
+        { keys: ['F'], label: 'Fit' },
+        { keys: ['R'], label: 'Center light' },
+        { keys: ['+', '−'], label: 'Zoom' },
+        { keys: [renderKeys], label: 'Render mode' },
+        { keys: ['S'], label: 'Snapshot' },
+      ],
+    },
+    {
+      title: 'Light',
+      items: [
+        { keys: ['←', '↑', '↓', '→'], label: 'Move light' },
+        { keys: ['Shift', '←'], label: 'Bigger move' },
+      ],
+    },
+  ];
+}
 
 export const VIEWER_ZOOM_FACTOR = 1.15;
 const LIGHT_SHIFT_MULTIPLIER = 3;
@@ -28,11 +77,13 @@ export function viewerKeyboardCommand(
   const nudge = event.shiftKey ? LIGHT_SHIFT_MULTIPLIER : 1;
 
   if (key === 'Escape') return { type: 'escape' };
+  if (key === '?' || key === '/') return { type: 'shortcuts' };
   if (key === 'h') return { type: 'interaction-mode', mode: 'pan' };
   if (key === 'l') return { type: 'interaction-mode', mode: 'light' };
   if (key === 'w') return { type: 'interaction-mode', mode: 'whitebalance' };
   if (key === 'a' && options.annotationEnabled) return { type: 'interaction-mode', mode: 'annotate' };
   if (key === 'f' || key === '0') return { type: 'fit' };
+  if (key === 'r') return { type: 'reset-light' };
   if (key === 's') return { type: 'export' };
   if (key === '+' || key === '=' || event.code === 'NumpadAdd') return { type: 'zoom', factor: VIEWER_ZOOM_FACTOR };
   if (key === '-' || key === '_' || event.code === 'NumpadSubtract') return { type: 'zoom', factor: 1 / VIEWER_ZOOM_FACTOR };

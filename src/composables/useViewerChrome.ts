@@ -186,6 +186,10 @@ export function useViewerChrome({
         setMode(payload.mode);
       } else if (type === 'fit') {
         fitToView();
+      } else if (type === 'reset-light') {
+        lightDir.value.set(0, 0, 1);
+        requestRender();
+        onViewRestored?.();
       } else if (type === 'export') {
         if (payload.download === false) {
           hostHandlers.onExport?.(exportPng());

@@ -162,12 +162,14 @@ describe('useViewerChrome', () => {
       detail: { type: 'set-interaction-mode', mode: 'light' },
     }));
     host.dispatchEvent(new CustomEvent('rti-command', { detail: { type: 'fit' } }));
+    host.dispatchEvent(new CustomEvent('rti-command', { detail: { type: 'reset-light' } }));
     host.dispatchEvent(new CustomEvent('rti-command', {
       detail: { type: 'export', download: false },
     }));
 
-    expect(lightDir.value.x).toBeCloseTo(0.4);
-    expect(lightDir.value.y).toBeCloseTo(0.2);
+    expect(lightDir.value.x).toBeCloseTo(0);
+    expect(lightDir.value.y).toBeCloseTo(0);
+    expect(lightDir.value.z).toBeCloseTo(1);
     expect(setRenderMode).toHaveBeenCalledWith(3);
     expect(setMode).toHaveBeenCalledWith('light');
     expect(fitToView).toHaveBeenCalled();

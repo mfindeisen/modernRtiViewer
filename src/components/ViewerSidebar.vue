@@ -1,20 +1,20 @@
 <template>
   <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:overflow-y-auto max-lg:overflow-x-hidden">
     <div class="flex flex-col items-center py-4 w-full">
-      <SidebarTooltip title="Pan & Zoom" description="Navigate the image">
+        <SidebarTooltip title="Pan & Zoom" description="Navigate the image (H)">
         <button aria-label="Pan & Zoom" :aria-pressed="currentMode === 'pan'" @click="emit('set-mode', 'pan')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'pan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <HandIcon class="w-5 h-5" />
         </button>
       </SidebarTooltip>
 
-      <SidebarTooltip title="Light Direction" description="Move the light source">
+      <SidebarTooltip title="Light Direction" description="Move the light source (L)">
         <button aria-label="Light Direction" :aria-pressed="currentMode === 'light'" @click="emit('set-mode', 'light')" :class="['p-3 rounded-xl transition-all', currentMode === 'light' ? 'bg-yellow-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <LightbulbIcon class="w-5 h-5" />
         </button>
       </SidebarTooltip>
 
       <div v-if="annotationEnabled" class="relative mb-2 flex flex-col items-center">
-        <SidebarTooltip title="Annotate" :description="activeShapeHint">
+        <SidebarTooltip title="Annotate" :description="`${activeShapeHint} (A)`">
           <button
             aria-label="Annotate"
             :aria-pressed="currentMode === 'annotate'"
@@ -67,7 +67,7 @@
 
       <div class="w-8 h-px bg-slate-700 my-4"></div>
 
-      <SidebarTooltip title="White Balance" description="Click a white or gray patch">
+      <SidebarTooltip title="White Balance" description="Click a white or gray patch (W)">
         <button aria-label="White Balance" :aria-pressed="currentMode === 'whitebalance'" @click="emit('toggle-white-balance')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'whitebalance' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <PipetteIcon class="w-5 h-5" />
         </button>
@@ -98,7 +98,7 @@
             <component :is="isFullscreen ? MinimizeIcon : MaximizeIcon" class="w-5 h-5" />
           </button>
         </SidebarTooltip>
-        <SidebarTooltip title="Download Render" description="Save current view as PNG">
+        <SidebarTooltip title="Download Render" description="Save current view as PNG (S)">
           <button aria-label="Download Render" @click="emit('export-image')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
             <DownloadIcon class="w-5 h-5" />
           </button>

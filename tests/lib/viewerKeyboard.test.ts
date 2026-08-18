@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isTypingTarget,
   viewerKeyboardCommand,
+  viewerShortcutGroups,
   VIEWER_ZOOM_FACTOR,
 } from '@/lib/viewerKeyboard.js';
 
@@ -22,6 +23,9 @@ describe('viewerKeyboardCommand', () => {
       type: 'render-mode', mode: 0,
     });
     expect(viewerKeyboardCommand({ key: 'f' } as KeyboardEvent, opts)).toEqual({ type: 'fit' });
+    expect(viewerKeyboardCommand({ key: 'r' } as KeyboardEvent, opts)).toEqual({ type: 'reset-light' });
+    expect(viewerKeyboardCommand({ key: '?' } as KeyboardEvent, opts)).toEqual({ type: 'shortcuts' });
+    expect(viewerKeyboardCommand({ key: '/' } as KeyboardEvent, opts)).toEqual({ type: 'shortcuts' });
     expect(viewerKeyboardCommand({ key: 's' } as KeyboardEvent, opts)).toEqual({ type: 'export' });
     expect(viewerKeyboardCommand({ key: '+' } as KeyboardEvent, opts)).toEqual({
       type: 'zoom', factor: VIEWER_ZOOM_FACTOR,
@@ -58,5 +62,19 @@ describe('isTypingTarget', () => {
     const div = document.createElement('div');
     expect(isTypingTarget(input)).toBe(true);
     expect(isTypingTarget(div)).toBe(false);
+  });
+});
+
+describe('viewerShortcutGroups', () => {
+  it('hides annotate unless enabled and uses 1–6 for neural modes', () => {
+    const withoutAnnotate = viewerShortcutGroups({ annotationEnabled: false, maxRenderMode: 4 });
+    expect(withoutAnnotate[0].items.map((item) => item.label)).toEqual([
+      'Pan', 'Light', 'White balance',
+    ]);
+    expect(withoutAnnotate[1].items.some((item) => item.keys.includes('1–5'))).toBe(true);
+
+    const neural = viewerShortcutGroups({ annotationEnabled: true, maxRenderMode: 5 });
+    expect(neural[0].items.map((item) => item.label)).toContain('Annotate');
+    expect(neural[1].items.some((item) => item.keys.includes('1–6'))).toBe(true);
   });
 });

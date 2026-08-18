@@ -7,7 +7,7 @@ import { useWhiteBalance } from './useWhiteBalance.js';
 import { useViewerChrome } from './useViewerChrome.js';
 import { useRenderSettings } from './useRenderSettings.js';
 import { useViewerKeyboard } from './useViewerKeyboard.js';
-import { nudgeLightDir } from '../lib/lightDirection.js';
+import { FRONT_LIGHT, nudgeLightDir } from '../lib/lightDirection.js';
 import { computeFitToViewZoom, formatZoomPercent } from '../lib/cameraFit.js';
 
 import type { RtiViewState } from '../types/rti.js';
@@ -26,7 +26,7 @@ export function useRtiViewer({
   const error = ref('');
   const currentMode = ref<ViewerMode>('pan');
   const colorGainVector = new THREE.Vector3(1, 1, 1);
-  const lightDir = ref(new THREE.Vector3(0, 0, 1));
+  const lightDir = ref(new THREE.Vector3(FRONT_LIGHT.x, FRONT_LIGHT.y, FRONT_LIGHT.z));
 
   const meshUpdaters = {
     setRenderModeOnMeshes: () => {},
@@ -214,6 +214,7 @@ export function useRtiViewer({
   const hudZoomPercent = ref(100);
   const hudLightX = ref('0.00');
   const hudLightY = ref('0.00');
+  const showShortcuts = ref(false);
   let viewChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
   function updateHud() {
@@ -248,7 +249,17 @@ export function useRtiViewer({
     requestRender();
   }
 
+  function resetLight() {
+    lightDir.value.set(FRONT_LIGHT.x, FRONT_LIGHT.y, FRONT_LIGHT.z);
+    requestRender();
+    updateHud();
+  }
+
   function handleEscape() {
+    if (showShortcuts.value) {
+      showShortcuts.value = false;
+      return;
+    }
     if (showShareModal.value) {
       showShareModal.value = false;
       return;
@@ -294,6 +305,14 @@ export function useRtiViewer({
         fitToView();
         return;
       }
+      if (command.type === 'reset-light') {
+        resetLight();
+        return;
+      }
+      if (command.type === 'shortcuts') {
+        showShortcuts.value = !showShortcuts.value;
+        return;
+      }
       if (command.type === 'export') {
         exportImage();
         return;
@@ -328,7 +347,7 @@ export function useRtiViewer({
     clearDrawingState();
     applyColorGain({ r: 1, g: 1, b: 1 });
     clearWbFeedback();
-    lightDir.value.set(0, 0, 1);
+    lightDir.value.set(FRONT_LIGHT.x, FRONT_LIGHT.y, FRONT_LIGHT.z);
     resetShading();
     if (currentMode.value !== 'pan') setMode('pan');
 
@@ -453,6 +472,8 @@ export function useRtiViewer({
     toggleFullscreen,
     setMode,
     fitToView,
+    resetLight,
+    showShortcuts,
     hudZoomPercent,
     hudLightX,
     hudLightY,

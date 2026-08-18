@@ -12,15 +12,37 @@
       <span class="text-[10px] uppercase tracking-wide text-white/50">Light</span>
       <span>{{ lightX }} {{ lightY }}</span>
     </div>
-    <button
-      type="button"
-      class="ml-1 px-2 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white/80 hover:bg-white/10 hover:text-white transition-colors"
-      aria-label="Fit image to view"
-      title="Fit (F)"
-      @click="emit('fit')"
-    >
-      Fit
-    </button>
+    <div class="flex items-center gap-1 ml-1">
+      <button
+        type="button"
+        class="px-2 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white/80 hover:bg-white/10 hover:text-white transition-colors"
+        aria-label="Fit image to view"
+        title="Fit (F)"
+        @click="emit('fit')"
+      >
+        Fit
+      </button>
+      <button
+        type="button"
+        class="px-2 py-1 rounded-lg text-[10px] font-semibold uppercase tracking-wide text-white/80 hover:bg-white/10 hover:text-white transition-colors whitespace-nowrap"
+        aria-label="Reset light to front"
+        title="Center light (R)"
+        @click="emit('reset-light')"
+      >
+        Center light
+      </button>
+      <button
+        type="button"
+        class="w-7 h-7 rounded-lg text-[12px] font-semibold text-white/50 hover:bg-white/10 hover:text-white transition-colors"
+        :class="shortcutsOpen ? 'bg-white/15 text-white' : ''"
+        aria-label="Keyboard shortcuts"
+        :aria-pressed="shortcutsOpen"
+        title="Keys (?)"
+        @click="emit('toggle-shortcuts')"
+      >
+        ?
+      </button>
+    </div>
   </div>
 </template>
 
@@ -30,7 +52,8 @@ defineProps({
   zoomPercent: { type: Number, default: 100 },
   lightX: { type: String, default: '0.00' },
   lightY: { type: String, default: '0.00' },
+  shortcutsOpen: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['fit']);
+const emit = defineEmits(['fit', 'reset-light', 'toggle-shortcuts']);
 </script>
