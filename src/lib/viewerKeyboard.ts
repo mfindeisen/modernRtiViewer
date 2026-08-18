@@ -1,4 +1,10 @@
 import type { ViewerMode } from '../composables/types.js';
+import {
+  RENDER_MODE_LATENT,
+  RENDER_MODE_LINE_DRAWING,
+  supportsLineDrawing,
+} from './rtiEnhancements.js';
+import { DEFAULT_VIEWER_FEATURES, type ViewerFeatures } from './viewerConfig.js';
 
 export type ViewerKeyboardCommand =
   | { type: 'interaction-mode'; mode: ViewerMode }
@@ -9,6 +15,9 @@ export type ViewerKeyboardCommand =
   | { type: 'reset-light' }
   | { type: 'export' }
   | { type: 'shortcuts' }
+  | { type: 'enhancements' }
+  | { type: 'toggle-animation' }
+  | { type: 'measure' }
   | { type: 'escape' };
 
 export interface ViewerShortcutItem {
@@ -21,32 +30,67 @@ export interface ViewerShortcutGroup {
   items: ViewerShortcutItem[];
 }
 
-export function viewerShortcutGroups(options: {
+export interface ViewerKeyboardOptions {
   annotationEnabled: boolean;
-  maxRenderMode: number;
-}): ViewerShortcutGroup[] {
+  rtiType?: number | null;
+  features?: ViewerFeatures;
+}
+
+function featuresOf(options: ViewerKeyboardOptions): ViewerFeatures {
+  return options.features ?? DEFAULT_VIEWER_FEATURES;
+}
+
+export function shortcutDigitToRenderMode(
+  digit: number,
+  rtiType?: number | null,
+  features: ViewerFeatures = DEFAULT_VIEWER_FEATURES,
+) {
+  if (digit >= 1 && digit <= 5) {
+    const mode = digit - 1;
+    if (mode === 4 && !features.dualLight) return null;
+    return mode;
+  }
+  if (digit === 6 && features.lineDrawing && supportsLineDrawing(rtiType)) return RENDER_MODE_LINE_DRAWING;
+  if (digit === 7 && features.latentMap && rtiType === 5) return RENDER_MODE_LATENT;
+  return null;
+}
+
+export function renderModeShortcutKeys(
+  rtiType?: number | null,
+  features: ViewerFeatures = DEFAULT_VIEWER_FEATURES,
+) {
+  if (rtiType === 5 && features.latentMap) return features.lineDrawing ? '1–7' : '1–5, 7';
+  if (features.lineDrawing && supportsLineDrawing(rtiType)) return '1–6';
+  return '1–5';
+}
+
+export function viewerShortcutGroups(options: ViewerKeyboardOptions): ViewerShortcutGroup[] {
+  const features = featuresOf(options);
   const tools: ViewerShortcutItem[] = [
     { keys: ['H'], label: 'Pan' },
     { keys: ['L'], label: 'Light' },
-    { keys: ['W'], label: 'White balance' },
   ];
-  if (options.annotationEnabled) {
+  if (features.whiteBalance) tools.push({ keys: ['W'], label: 'White balance' });
+  if (features.measure) tools.push({ keys: ['M'], label: 'Measure' });
+  if (features.enhancements) tools.push({ keys: ['E'], label: 'Enhancements' });
+  if (features.lightOrbit) tools.push({ keys: ['Space'], label: 'Light orbit' });
+  if (options.annotationEnabled && features.annotations) {
     tools.push({ keys: ['A'], label: 'Annotate' });
   }
 
-  const renderKeys = options.maxRenderMode >= 5 ? '1–6' : '1–5';
+  const viewItems: ViewerShortcutItem[] = [
+    { keys: ['F'], label: 'Fit' },
+    { keys: ['R'], label: 'Center light' },
+    { keys: ['+', '−'], label: 'Zoom' },
+    { keys: [renderModeShortcutKeys(options.rtiType, features)], label: 'Render mode' },
+  ];
+  if (features.export) viewItems.push({ keys: ['S'], label: 'Snapshot' });
 
   return [
     { title: 'Tools', items: tools },
     {
       title: 'View',
-      items: [
-        { keys: ['F'], label: 'Fit' },
-        { keys: ['R'], label: 'Center light' },
-        { keys: ['+', '−'], label: 'Zoom' },
-        { keys: [renderKeys], label: 'Render mode' },
-        { keys: ['S'], label: 'Snapshot' },
-      ],
+      items: viewItems,
     },
     {
       title: 'Light',
@@ -69,22 +113,28 @@ export function isTypingTarget(target: EventTarget | null) {
 
 export function viewerKeyboardCommand(
   event: Pick<KeyboardEvent, 'key' | 'code' | 'shiftKey' | 'ctrlKey' | 'metaKey' | 'altKey'>,
-  options: { annotationEnabled: boolean; maxRenderMode: number },
+  options: ViewerKeyboardOptions,
 ): ViewerKeyboardCommand | null {
   if (event.ctrlKey || event.metaKey || event.altKey) return null;
 
   const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
   const nudge = event.shiftKey ? LIGHT_SHIFT_MULTIPLIER : 1;
+  const features = featuresOf(options);
 
   if (key === 'Escape') return { type: 'escape' };
   if (key === '?' || key === '/') return { type: 'shortcuts' };
   if (key === 'h') return { type: 'interaction-mode', mode: 'pan' };
   if (key === 'l') return { type: 'interaction-mode', mode: 'light' };
-  if (key === 'w') return { type: 'interaction-mode', mode: 'whitebalance' };
-  if (key === 'a' && options.annotationEnabled) return { type: 'interaction-mode', mode: 'annotate' };
+  if (key === 'w' && features.whiteBalance) return { type: 'interaction-mode', mode: 'whitebalance' };
+  if (key === 'm' && features.measure) return { type: 'measure' };
+  if (key === 'e' && features.enhancements) return { type: 'enhancements' };
+  if ((key === ' ' || key === 'Spacebar') && features.lightOrbit) return { type: 'toggle-animation' };
+  if (key === 'a' && options.annotationEnabled && features.annotations) {
+    return { type: 'interaction-mode', mode: 'annotate' };
+  }
   if (key === 'f' || key === '0') return { type: 'fit' };
   if (key === 'r') return { type: 'reset-light' };
-  if (key === 's') return { type: 'export' };
+  if (key === 's' && features.export) return { type: 'export' };
   if (key === '+' || key === '=' || event.code === 'NumpadAdd') return { type: 'zoom', factor: VIEWER_ZOOM_FACTOR };
   if (key === '-' || key === '_' || event.code === 'NumpadSubtract') return { type: 'zoom', factor: 1 / VIEWER_ZOOM_FACTOR };
 
@@ -94,8 +144,9 @@ export function viewerKeyboardCommand(
   if (key === 'ArrowDown') return { type: 'nudge-light', dx: 0, dy: -nudge };
 
   const digit = digitFromKey(event);
-  if (digit !== null && digit >= 1 && digit <= options.maxRenderMode + 1) {
-    return { type: 'render-mode', mode: digit - 1 };
+  if (digit !== null) {
+    const mode = shortcutDigitToRenderMode(digit, options.rtiType, features);
+    if (mode !== null) return { type: 'render-mode', mode };
   }
 
   return null;

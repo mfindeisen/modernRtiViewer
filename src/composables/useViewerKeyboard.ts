@@ -1,26 +1,34 @@
 import type { Ref } from 'vue';
 import { isTypingTarget, viewerKeyboardCommand } from '../lib/viewerKeyboard.js';
 import type { ViewerKeyboardCommand } from '../lib/viewerKeyboard.js';
+import type { ViewerFeatures } from '../lib/viewerConfig.js';
 
 interface UseViewerKeyboardOptions {
   root: Ref<HTMLElement | null>;
   getAnnotationEnabled: () => boolean;
-  getMaxRenderMode: () => number;
+  getRtiType: () => number | null | undefined;
+  getFeatures?: () => ViewerFeatures;
   onCommand: (command: ViewerKeyboardCommand) => void;
 }
 
 export function useViewerKeyboard({
   root,
   getAnnotationEnabled,
-  getMaxRenderMode,
+  getRtiType,
+  getFeatures,
   onCommand,
 }: UseViewerKeyboardOptions) {
   function viewerHasFocus() {
     const el = root.value;
     if (!el) return false;
-    if (document.fullscreenElement === el) return true;
+    const fullscreen = document.fullscreenElement;
+    if (fullscreen && (fullscreen === el || fullscreen.contains(el) || el.contains(fullscreen))) {
+      return true;
+    }
     const active = document.activeElement;
-    return !!(active && el.contains(active));
+    if (active && el.contains(active)) return true;
+    const host = el.closest('modern-rti-viewer');
+    return !!(host && (active === host || (active && host.contains(active))));
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -28,7 +36,8 @@ export function useViewerKeyboard({
     if (!viewerHasFocus()) return;
     const command = viewerKeyboardCommand(event, {
       annotationEnabled: getAnnotationEnabled(),
-      maxRenderMode: getMaxRenderMode(),
+      rtiType: getRtiType(),
+      features: getFeatures?.(),
     });
     if (!command) return;
     event.preventDefault();

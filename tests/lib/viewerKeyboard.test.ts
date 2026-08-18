@@ -3,11 +3,14 @@ import {
   isTypingTarget,
   viewerKeyboardCommand,
   viewerShortcutGroups,
+  shortcutDigitToRenderMode,
   VIEWER_ZOOM_FACTOR,
 } from '@/lib/viewerKeyboard.js';
+import { RENDER_MODE_LATENT, RENDER_MODE_LINE_DRAWING } from '@/lib/rtiEnhancements.js';
+import { DEFAULT_VIEWER_FEATURES } from '@/lib/viewerConfig.js';
 
 describe('viewerKeyboardCommand', () => {
-  const opts = { annotationEnabled: true, maxRenderMode: 4 };
+  const opts = { annotationEnabled: true, rtiType: 1 };
 
   it('maps interaction, render, fit, zoom, and export keys', () => {
     expect(viewerKeyboardCommand({ key: 'h' } as KeyboardEvent, opts)).toEqual({
@@ -27,6 +30,9 @@ describe('viewerKeyboardCommand', () => {
     expect(viewerKeyboardCommand({ key: '?' } as KeyboardEvent, opts)).toEqual({ type: 'shortcuts' });
     expect(viewerKeyboardCommand({ key: '/' } as KeyboardEvent, opts)).toEqual({ type: 'shortcuts' });
     expect(viewerKeyboardCommand({ key: 's' } as KeyboardEvent, opts)).toEqual({ type: 'export' });
+    expect(viewerKeyboardCommand({ key: 'e' } as KeyboardEvent, opts)).toEqual({ type: 'enhancements' });
+    expect(viewerKeyboardCommand({ key: 'm' } as KeyboardEvent, opts)).toEqual({ type: 'measure' });
+    expect(viewerKeyboardCommand({ key: ' ' } as KeyboardEvent, opts)).toEqual({ type: 'toggle-animation' });
     expect(viewerKeyboardCommand({ key: '+' } as KeyboardEvent, opts)).toEqual({
       type: 'zoom', factor: VIEWER_ZOOM_FACTOR,
     });
@@ -45,14 +51,31 @@ describe('viewerKeyboardCommand', () => {
   it('ignores annotate when disabled and skips modifier chords', () => {
     expect(viewerKeyboardCommand({ key: 'a' } as KeyboardEvent, {
       annotationEnabled: false,
-      maxRenderMode: 4,
+      rtiType: 1,
     })).toBeNull();
     expect(viewerKeyboardCommand({ key: 's', ctrlKey: true } as KeyboardEvent, opts)).toBeNull();
-    expect(viewerKeyboardCommand({ key: '6' } as KeyboardEvent, opts)).toBeNull();
     expect(viewerKeyboardCommand({ key: '6' } as KeyboardEvent, {
       annotationEnabled: false,
-      maxRenderMode: 5,
-    })).toEqual({ type: 'render-mode', mode: 5 });
+      rtiType: 4,
+    })).toBeNull();
+    expect(viewerKeyboardCommand({ key: '6' } as KeyboardEvent, opts)).toEqual({
+      type: 'render-mode', mode: RENDER_MODE_LINE_DRAWING,
+    });
+    expect(viewerKeyboardCommand({ key: '7' } as KeyboardEvent, {
+      annotationEnabled: false,
+      rtiType: 5,
+    })).toEqual({ type: 'render-mode', mode: RENDER_MODE_LATENT });
+  });
+});
+
+describe('shortcutDigitToRenderMode', () => {
+  it('skips the internal packed-normal buffer', () => {
+    expect(shortcutDigitToRenderMode(6, 1)).toBe(RENDER_MODE_LINE_DRAWING);
+    expect(shortcutDigitToRenderMode(6, 5)).toBe(RENDER_MODE_LINE_DRAWING);
+    expect(shortcutDigitToRenderMode(7, 5)).toBe(RENDER_MODE_LATENT);
+    expect(shortcutDigitToRenderMode(7, 1)).toBeNull();
+    expect(shortcutDigitToRenderMode(6, 4)).toBeNull();
+    expect(shortcutDigitToRenderMode(6, 1, { ...DEFAULT_VIEWER_FEATURES, lineDrawing: false })).toBeNull();
   });
 });
 
@@ -66,15 +89,25 @@ describe('isTypingTarget', () => {
 });
 
 describe('viewerShortcutGroups', () => {
-  it('hides annotate unless enabled and uses 1–6 for neural modes', () => {
-    const withoutAnnotate = viewerShortcutGroups({ annotationEnabled: false, maxRenderMode: 4 });
+  it('hides annotate unless enabled and lists extra keys for line drawing', () => {
+    const withoutAnnotate = viewerShortcutGroups({ annotationEnabled: false, rtiType: 4 });
     expect(withoutAnnotate[0].items.map((item) => item.label)).toEqual([
-      'Pan', 'Light', 'White balance',
+      'Pan', 'Light', 'White balance', 'Measure', 'Enhancements', 'Light orbit',
     ]);
     expect(withoutAnnotate[1].items.some((item) => item.keys.includes('1–5'))).toBe(true);
 
-    const neural = viewerShortcutGroups({ annotationEnabled: true, maxRenderMode: 5 });
+    const hsh = viewerShortcutGroups({ annotationEnabled: false, rtiType: 1 });
+    expect(hsh[1].items.some((item) => item.keys.includes('1–6'))).toBe(true);
+
+    const neural = viewerShortcutGroups({ annotationEnabled: true, rtiType: 5 });
     expect(neural[0].items.map((item) => item.label)).toContain('Annotate');
-    expect(neural[1].items.some((item) => item.keys.includes('1–6'))).toBe(true);
+    expect(neural[1].items.some((item) => item.keys.includes('1–7'))).toBe(true);
+
+    const drawingOff = viewerShortcutGroups({
+      annotationEnabled: false,
+      rtiType: 1,
+      features: { ...DEFAULT_VIEWER_FEATURES, lineDrawing: false },
+    });
+    expect(drawingOff[1].items.some((item) => item.keys.includes('1–5'))).toBe(true);
   });
 });
