@@ -1,6 +1,6 @@
 <template>
-  <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:overflow-y-auto max-lg:overflow-x-hidden">
-    <div class="flex flex-col items-center py-4 w-full">
+  <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:w-full max-lg:h-14 max-lg:flex-row max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:rounded-t-xl max-lg:rounded-b-none max-lg:border-r-0 max-lg:border-b">
+    <div class="flex flex-col items-center py-4 w-full max-lg:flex-row max-lg:py-1 max-lg:px-2 max-lg:w-auto max-lg:min-w-max">
         <SidebarTooltip title="Pan & Zoom" description="Navigate the image (H)">
         <button aria-label="Pan & Zoom" :aria-pressed="currentMode === 'pan'" @click="emit('set-mode', 'pan')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'pan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <HandIcon class="w-5 h-5" />
@@ -31,7 +31,7 @@
         </SidebarTooltip>
         <div
           v-if="currentMode === 'annotate' && shapeMenuOpen"
-          class="absolute left-full top-0 ml-2 z-[60] w-44 rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur-md shadow-2xl py-1.5"
+          class="absolute left-full top-0 ml-2 z-[60] w-48 rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur-md shadow-2xl py-1.5"
           @pointerdown.stop
         >
           <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Shape</p>
@@ -59,17 +59,76 @@
               :class="annotationColor === color ? 'border-white scale-110' : 'border-transparent'"
               :style="{ backgroundColor: color }"
               :title="color"
-              @click="emit('select-annotation-color', color)"
+              :aria-label="`Color ${color}`"
+              :aria-pressed="annotationColor === color"
+              @click="selectPreset(color)"
             />
+            <button
+              type="button"
+              class="w-6 h-6 rounded-full p-[2px] border-2 transition-transform hover:scale-110"
+              :class="customColorActive ? 'border-white scale-110' : 'border-transparent'"
+              :style="{ background: RAINBOW_SWATCH }"
+              title="Custom color"
+              aria-label="Custom color"
+              :aria-pressed="customColorActive"
+              @click="toggleCustomPicker"
+            >
+              <span
+                class="block w-full h-full rounded-full border border-slate-900/40"
+                :style="{ backgroundColor: customColorActive ? annotationColor : '#0f172a' }"
+              />
+            </button>
+          </div>
+          <div v-if="customPickerOpen" class="px-3 pb-2">
+            <AnnotationHsvPicker :model-value="annotationColor" @update:model-value="emit('select-annotation-color', $event)" />
+          </div>
+          <p class="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 border-t border-white/10 mt-1">Line width</p>
+          <div class="px-3 pb-2 space-y-1.5">
+            <div class="flex items-center gap-2">
+              <input
+                type="range"
+                min="1"
+                max="12"
+                step="1"
+                :value="annotationStrokeWidth"
+                class="flex-1 accent-amber-400 h-1.5"
+                :aria-label="`Line width ${annotationStrokeWidth}`"
+                @input="onStrokeWidthInput"
+              />
+              <span class="w-5 text-right text-[10px] tabular-nums text-slate-300">{{ annotationStrokeWidth }}</span>
+            </div>
+            <svg class="w-full h-4" viewBox="0 0 120 16" aria-hidden="true">
+              <line
+                x1="4"
+                y1="8"
+                x2="116"
+                y2="8"
+                :stroke="annotationColor"
+                :stroke-width="annotationStrokeWidth"
+                stroke-linecap="round"
+              />
+            </svg>
           </div>
         </div>
       </div>
 
       <div class="w-8 h-px bg-slate-700 my-4"></div>
 
-      <SidebarTooltip title="White Balance" description="Click a white or gray patch (W)">
+      <SidebarTooltip v-if="featureOn('whiteBalance')" title="White Balance" description="Click a white or gray patch (W)">
         <button aria-label="White Balance" :aria-pressed="currentMode === 'whitebalance'" @click="emit('toggle-white-balance')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'whitebalance' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <PipetteIcon class="w-5 h-5" />
+        </button>
+      </SidebarTooltip>
+
+      <SidebarTooltip v-if="featureOn('measure')" title="Measure" :description="scaleSet ? 'Calibrated distance; set scale from a drawn line (M)' : 'Draw a line, then set the scale from the photographed ruler (M)'">
+        <button aria-label="Measure" :aria-pressed="currentMode === 'measure'" @click="emit('toggle-measure')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'measure' ? 'bg-sky-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
+          <RulerIcon class="w-5 h-5" />
+        </button>
+      </SidebarTooltip>
+
+      <SidebarTooltip v-if="featureOn('enhancements')" title="Enhancements" description="Diffuse gain, unsharp, specular (E)">
+        <button aria-label="Enhancements" :aria-pressed="enhancementsOpen" @click="emit('toggle-enhancements')" :class="['p-3 rounded-xl transition-all mb-2', enhancementsOpen ? 'bg-violet-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
+          <SlidersHorizontalIcon class="w-5 h-5" />
         </button>
       </SidebarTooltip>
 
@@ -80,30 +139,36 @@
         :key="mode.id"
         :title="mode.title"
         :description="mode.description"
+        :experimental="mode.experimental"
       >
         <button
           :aria-label="mode.title"
           :aria-pressed="renderMode === mode.id"
           @click="emit('set-render-mode', mode.id)"
-          :class="['p-3 rounded-xl transition-all mb-2', renderMode === mode.id ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:bg-white/10 hover:text-white']"
+          :class="['relative p-3 rounded-xl transition-all mb-2', renderMode === mode.id ? 'bg-white text-slate-900 shadow' : 'text-slate-400 hover:bg-white/10 hover:text-white']"
         >
           <component :is="mode.icon" class="w-5 h-5" />
+          <span
+            v-if="mode.experimental"
+            class="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-400"
+            aria-hidden="true"
+          />
         </button>
       </SidebarTooltip>
 
-      <div class="mt-auto flex flex-col items-center w-full">
+      <div class="mt-auto flex flex-col items-center w-full max-lg:flex-row max-lg:mt-0">
         <div class="w-8 h-px bg-slate-700 my-4"></div>
         <SidebarTooltip :title="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'" description="Maximize workspace">
           <button :aria-label="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'" @click="emit('toggle-fullscreen')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
             <component :is="isFullscreen ? MinimizeIcon : MaximizeIcon" class="w-5 h-5" />
           </button>
         </SidebarTooltip>
-        <SidebarTooltip title="Download Render" description="Save current view as PNG (S)">
-          <button aria-label="Download Render" @click="emit('export-image')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
+        <SidebarTooltip v-if="featureOn('export')" title="Export" description="PNG, clipboard, or light orbit (S)">
+          <button aria-label="Export" @click="emit('export-image')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
             <DownloadIcon class="w-5 h-5" />
           </button>
         </SidebarTooltip>
-        <SidebarTooltip title="Copy Link" description="Share view with exact angles">
+        <SidebarTooltip v-if="featureOn('share')" title="Copy Link" description="Share view with exact angles">
           <button aria-label="Copy Link" @click="emit('copy-link')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
             <LinkIcon class="w-5 h-5" />
           </button>
@@ -133,14 +198,19 @@ import {
   Minimize as MinimizeIcon,
   Map as MapIcon,
   Sun as SunIcon,
+  PenLine as PenLineIcon,
   Circle as CircleIcon,
   CircleDot as CircleDotIcon,
   Square as SquareIcon,
   Pipette as PipetteIcon,
+  Ruler as RulerIcon,
+  SlidersHorizontal as SlidersHorizontalIcon,
 } from '@lucide/vue';
 import { ANNOTATION_SHAPE_OPTIONS } from '../lib/annotationShapes.js';
-import { ANNOTATION_COLOR_PRESETS } from '../lib/annotationColors.js';
+import { ANNOTATION_COLOR_PRESETS, isPresetAnnotationColor } from '../lib/annotationColors.js';
+import { DEFAULT_EXPERIMENTAL_FEATURES, DEFAULT_VIEWER_FEATURES, type ViewerFeatureId, type ViewerFeatures } from '../lib/viewerConfig.js';
 import SidebarTooltip from './SidebarTooltip.vue';
+import AnnotationHsvPicker from './AnnotationHsvPicker.vue';
 
 const shapeIcons: Record<'point' | 'circle' | 'rectangle', typeof CircleIcon> = {
   point: CircleDotIcon,
@@ -156,8 +226,16 @@ const baseRenderModes = [
   { id: 4, icon: SunIcon, title: 'Dual Light', description: 'Red & Blue opposing lights' },
 ];
 
-const latentRenderMode = {
+const lineDrawingMode = {
   id: 5,
+  icon: PenLineIcon,
+  title: 'Line Drawing',
+  description: 'Relief as black lines on white',
+  experimental: true,
+};
+
+const latentRenderMode = {
+  id: 7,
   icon: LayersIcon,
   title: 'Latent Map',
   description: 'View raw learned latent map',
@@ -169,11 +247,16 @@ const props = defineProps({
   annotationEnabled: { type: Boolean, default: false },
   annotationShape: { type: String, required: true },
   annotationColor: { type: String, required: true },
+  annotationStrokeWidth: { type: Number, required: true },
   shapeMenuOpen: { type: Boolean, default: false },
   activeShapeHint: { type: String, default: '' },
   rtiType: { type: Number, default: null },
   isFullscreen: { type: Boolean, default: false },
   infoOpen: { type: Boolean, default: false },
+  enhancementsOpen: { type: Boolean, default: false },
+  scaleSet: { type: Boolean, default: false },
+  features: { type: Object, default: () => ({ ...DEFAULT_VIEWER_FEATURES }) },
+  experimental: { type: Array, default: () => [...DEFAULT_EXPERIMENTAL_FEATURES] },
 });
 
 const emit = defineEmits([
@@ -181,7 +264,10 @@ const emit = defineEmits([
   'toggle-annotate',
   'select-annotation-shape',
   'select-annotation-color',
+  'select-annotation-stroke-width',
   'toggle-white-balance',
+  'toggle-measure',
+  'toggle-enhancements',
   'set-render-mode',
   'toggle-fullscreen',
   'export-image',
@@ -192,9 +278,45 @@ const emit = defineEmits([
 const sidebarEl = ref(null);
 defineExpose({ sidebarEl });
 
-const renderModes = computed(() => (
-  props.rtiType === 5
-    ? [...baseRenderModes, latentRenderMode]
-    : baseRenderModes
-));
+const RAINBOW_SWATCH = 'conic-gradient(from 0deg, #ef4444, #f59e0b, #22c55e, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444)';
+const customPickerOpen = ref(false);
+const customColorActive = computed(() => customPickerOpen.value || !isPresetAnnotationColor(props.annotationColor));
+
+function selectPreset(color: string) {
+  customPickerOpen.value = false;
+  emit('select-annotation-color', color);
+}
+
+function toggleCustomPicker() {
+  customPickerOpen.value = !customPickerOpen.value;
+}
+
+function onStrokeWidthInput(event: Event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  emit('select-annotation-stroke-width', Number(target.value));
+}
+
+const renderModes = computed(() => {
+  const features = (props.features ?? DEFAULT_VIEWER_FEATURES) as ViewerFeatures;
+  const experimental = new Set((props.experimental ?? DEFAULT_EXPERIMENTAL_FEATURES) as ViewerFeatureId[]);
+  const modes = baseRenderModes
+    .filter((mode) => mode.id !== 4 || features.dualLight !== false)
+    .map((mode) => ({ ...mode, experimental: false }));
+  if (features.lineDrawing !== false && props.rtiType !== 4) {
+    modes.push({
+      ...lineDrawingMode,
+      experimental: experimental.has('lineDrawing'),
+    });
+  }
+  if (features.latentMap !== false && props.rtiType === 5) {
+    modes.push({ ...latentRenderMode, experimental: experimental.has('latentMap') });
+  }
+  return modes;
+});
+
+function featureOn(id: ViewerFeatureId) {
+  const features = (props.features ?? DEFAULT_VIEWER_FEATURES) as ViewerFeatures;
+  return features[id] !== false;
+}
 </script>

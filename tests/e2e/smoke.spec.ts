@@ -5,7 +5,9 @@ test.describe('Demo app smoke', () => {
     await page.goto('/');
 
     await expect(page.getByRole('heading', { name: 'Modern WebRTI Viewer' })).toBeVisible();
-    await expect(page.locator('.bg-slate-800').first()).toBeVisible();
+    await expect(page.getByLabel('Dataset URL')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Pan & Zoom' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Enhancements' })).toBeVisible();
 
     const viewerState = page.getByText('Loading RTI Data...')
       .or(page.getByText('Failed to load RTI'));

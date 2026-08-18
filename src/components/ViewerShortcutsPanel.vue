@@ -49,17 +49,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { viewerShortcutGroups } from '../lib/viewerKeyboard.js';
+import type { ViewerFeatures } from '../lib/viewerConfig.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   annotationEnabled: { type: Boolean, default: false },
-  maxRenderMode: { type: Number, default: 4 },
+  rtiType: { type: Number, default: null },
+  features: { type: Object, default: null },
 });
 
 const emit = defineEmits(['close']);
 
 const groups = computed(() => viewerShortcutGroups({
   annotationEnabled: props.annotationEnabled,
-  maxRenderMode: props.maxRenderMode,
+  rtiType: props.rtiType,
+  features: props.features as ViewerFeatures | undefined,
 }));
 </script>
