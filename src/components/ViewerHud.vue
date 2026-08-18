@@ -3,14 +3,19 @@
     v-if="visible"
     class="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] right-[max(1.5rem,env(safe-area-inset-right,0px))] z-20 flex items-center gap-3 rounded-xl bg-black/40 backdrop-blur-md border border-white/10 px-3 py-2 text-xs text-white/90 shadow-xl pointer-events-auto"
   >
-    <div class="flex flex-col leading-tight tabular-nums" aria-live="polite">
+    <div class="flex flex-col leading-tight tabular-nums w-[4.5ch]" aria-live="polite">
       <span class="text-[10px] uppercase tracking-wide text-white/50">Zoom</span>
       <span>{{ zoomPercent }}%</span>
     </div>
     <div class="w-px h-7 bg-white/10" />
-    <div class="flex flex-col leading-tight tabular-nums">
+    <div class="flex flex-col leading-tight tabular-nums w-[9ch]">
       <span class="text-[10px] uppercase tracking-wide text-white/50">Light</span>
       <span>{{ lightX }} {{ lightY }}</span>
+    </div>
+    <div class="w-px h-7 bg-white/10" />
+    <div class="flex flex-col leading-tight tabular-nums" title="Color under the cursor">
+      <span class="text-[10px] uppercase tracking-wide text-white/50">RGB</span>
+      <span class="whitespace-pre w-[11ch]">{{ probeRgb || '000 000 000' }}</span>
     </div>
     <div class="flex items-center gap-1 ml-1">
       <button
@@ -52,6 +57,7 @@ defineProps({
   zoomPercent: { type: Number, default: 100 },
   lightX: { type: String, default: '0.00' },
   lightY: { type: String, default: '0.00' },
+  probeRgb: { type: String, default: '' },
   shortcutsOpen: { type: Boolean, default: false },
 });
 
