@@ -38,7 +38,7 @@ export function nudgeLightDir(
   return clampLightXy(light.x + dx * step, light.y + dy * step);
 }
 
-function clampLightXy(nx: number, ny: number) {
+export function clampLightXy(nx: number, ny: number) {
   let r2 = nx * nx + ny * ny;
   const maxR2 = MAX_LIGHT_RADIUS * MAX_LIGHT_RADIUS;
   if (r2 > maxR2) {
@@ -48,6 +48,30 @@ function clampLightXy(nx: number, ny: number) {
     r2 = maxR2;
   }
   return { x: nx, y: ny, z: Math.sqrt(Math.max(0, 1.0 - r2)) };
+}
+
+/** Dual-light opposite: same elevation, azimuth flipped 180°. */
+export function oppositeLightDir(light: { x: number; y: number; z: number }) {
+  return clampLightXy(-light.x, -light.y);
+}
+
+/** Bump a near-frontal light out to a raking orbit radius. */
+export function ensureOrbitRadius(light: { x: number; y: number; z: number }, minR = 0.65) {
+  const r = Math.hypot(light.x, light.y);
+  if (r >= minR) return { x: light.x, y: light.y, z: light.z };
+  return clampLightXy(minR, 0);
+}
+
+/** Rotate the light around the surface normal (Z) by `radians`. */
+export function rotateLightDir(light: { x: number; y: number; z: number }, radians: number) {
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  return clampLightXy(light.x * c - light.y * s, light.x * s + light.y * c);
+}
+
+/** Oscillate along X at a fixed Y (raking sweep). `phase` in radians. */
+export function rakingLightDir(phase: number, y = 0) {
+  return clampLightXy(Math.sin(phase) * MAX_LIGHT_RADIUS, y);
 }
 
 /** Map a canvas pointer position to normalized UV inside the inscribed square. */
