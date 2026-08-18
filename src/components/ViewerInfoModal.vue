@@ -23,6 +23,15 @@
         </div>
 
         <div class="space-y-4 mb-8">
+          <div v-if="dataset">
+            <h3 class="text-white font-semibold mb-1">Dataset</h3>
+            <dl class="text-sm text-slate-400 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+              <dt>Type</dt><dd class="text-slate-200">{{ dataset.typeLabel }}</dd>
+              <dt>Size</dt><dd class="text-slate-200">{{ dataset.width }} × {{ dataset.height }}</dd>
+              <dt>Tiles</dt><dd class="text-slate-200">{{ dataset.tileSize }}px {{ dataset.format }}</dd>
+            </dl>
+          </div>
+
           <div>
             <h3 class="text-white font-semibold mb-1">Technology</h3>
             <p class="text-sm text-slate-400">Powered by Vue 3 and Three.js. This viewer utilizes custom WebGL shaders to reconstruct reflectance fields (PTM/HSH) in real-time directly on the GPU.</p>
@@ -49,6 +58,10 @@ import { VIEWER_VERSION } from '../version.js';
 
 defineProps({
   open: { type: Boolean, default: false },
+  dataset: {
+    type: Object,
+    default: undefined,
+  },
 });
 
 const emit = defineEmits(['close']);
