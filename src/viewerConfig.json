@@ -1,0 +1,16 @@
+{
+  "features": {
+    "annotations": true,
+    "whiteBalance": true,
+    "measure": true,
+    "enhancements": true,
+    "dualLight": true,
+    "lineDrawing": true,
+    "latentMap": true,
+    "lightOrbit": true,
+    "export": true,
+    "share": true,
+    "meshPreview": true
+  },
+  "experimental": ["lineDrawing", "meshPreview"]
+}
