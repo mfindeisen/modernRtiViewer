@@ -95,6 +95,8 @@ It accepts `rti-command` custom events:
 
 Keyboard (when the viewer is focused): `H` pan, `L` light, `W` white balance, `A` annotate, `1–5` render modes, arrows nudge light, `+`/`-` zoom, `F` fit, `S` snapshot, `Esc` back to pan.
 
-Observed attributes: `url`, `share-url`, and `annotation-enabled` are reactive — changing them updates the embedded viewer without remounting.
+Observed attributes: `url`, `share-url`, `annotation-enabled`, `scale-editable`, `tile-format`, `debug`, and `features` are reactive — changing them updates the embedded viewer without remounting.
+
+`features` accepts a JSON object (or a full `{ "features": {…}, "experimental": […] }` document) to turn tools on or off. Defaults live in `src/viewerConfig.json`. Line drawing and 3D mesh preview are enabled and marked experimental unless the config says otherwise.
 
 See `useViewerChrome.ts` for the host command handler.

@@ -33,6 +33,27 @@ The viewer loads an RTI dataset via a URL property pointing to either:
 
 GeoTIFF support is loaded on demand — JPG-only datasets do not download the TIFF decoder.
 
+### Feature config
+
+Active tools and render modes are controlled by `src/viewerConfig.json`. Set a feature to `false` to hide it from the sidebar, export dialog, and keyboard shortcuts. `experimental` lists features that show an Experimental badge; line drawing and 3D mesh preview are marked that way by default.
+
+```json
+{
+  "features": {
+    "lineDrawing": true,
+    "meshPreview": true
+  },
+  "experimental": ["lineDrawing", "meshPreview"]
+}
+```
+
+Hosts can override the bundled file at runtime:
+
+- Vue prop: `:features="{ lineDrawing: false }"`
+- Web component: `features='{"lineDrawing":false}'`
+
+`annotation-enabled` still gates annotate mode per session, even when the `annotations` feature is on.
+
 ### Interface Modes
 
 The viewer provides several interaction modes on the left sidebar:

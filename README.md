@@ -52,7 +52,10 @@ You can switch the mathematical rendering mode:
 - **Normals:** Visualizes the surface normal vectors calculated directly from the RTI coefficients or via finite differences from the Neural representation, allowing you to see the raw geometric shape without texture color.
 - **Slope Heatmap:** Computes the steepness of the surface and maps it to a color gradient (blue for flat, red for steep). Extremely useful for highlighting shallow engravings or scratches without adjusting the light.
 - **Dual Light:** Calculates a secondary, opposite light source (raking light). The primary light is tinted red and the opposing light blue. This creates high-contrast shadows that perfectly reveal fine tool marks and edges.
+- **Line Drawing (experimental):** Traces ridges and valleys from photometric normals as black lines on white.
 - **Latent Map (Neural RTI only):** Renders the raw 3-channel RGB latent vector from the latent map, showing the compressed feature space.
+
+Tools and render modes can be turned on or off in `src/viewerConfig.json`. Line drawing and the 3D surface preview are marked experimental there.
 
 ## Technical Details
 
