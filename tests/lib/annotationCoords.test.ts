@@ -74,6 +74,22 @@ describe('world ↔ screen', () => {
     const bottom = worldToScreen(0, -200, camera, domElement)!;
     expect(top.y).toBeLessThan(bottom.y);
   });
+
+  it('returns null when the canvas has no layout size', () => {
+    const hidden = { clientWidth: 0, clientHeight: 0 } as HTMLElement;
+    expect(worldToScreen(0, 0, camera, hidden)).toBeNull();
+    expect(screenToWorld(10, 10, camera, hidden)).toBeNull();
+  });
+
+  it('returns null when the camera frustum is not finite', () => {
+    const broken = {
+      ...camera,
+      left: Number.NaN,
+      right: Number.NaN,
+      zoom: Number.NaN,
+    } as unknown as THREE.OrthographicCamera;
+    expect(worldToScreen(0, 0, broken, domElement)).toBeNull();
+  });
 });
 
 describe('imageNormRadiusToScreen', () => {

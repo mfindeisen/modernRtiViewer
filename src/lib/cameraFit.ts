@@ -1,3 +1,8 @@
+/** True when a layout box can be used for camera/aspect math. */
+export function viewportHasLayout(width: number, height: number): boolean {
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+}
+
 /** Compute orthographic zoom so the full image fits in the viewport (legacy WebRTIViewer behavior). */
 export function computeFitToViewZoom(
   viewportWidth: number,

@@ -2,7 +2,7 @@ import { ref, shallowRef } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { QuadtreeManager } from '../lib/QuadtreeManager';
-import { computeFitToViewZoom, computeZoomLimits } from '../lib/cameraFit.js';
+import { computeFitToViewZoom, computeZoomLimits, viewportHasLayout } from '../lib/cameraFit.js';
 import { parseViewHash } from '../lib/viewerUrl.js';
 import { loadRtiInfo, normalizeTileFormat } from '../lib/rtiInfoLoader.js';
 import { openTiffDataset } from '../lib/openTiffDataset.js';
@@ -150,8 +150,10 @@ export function useRtiRenderer({
     if (renderer.value && containerWrapper.value && rtiInfo.value) {
       const width = containerWrapper.value.clientWidth;
       const height = containerWrapper.value.clientHeight;
-      renderer.value.setSize(width, height);
-      renderer.value.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      if (viewportHasLayout(width, height)) {
+        renderer.value.setSize(width, height);
+        renderer.value.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      }
     }
     requestRender();
   }
@@ -189,8 +191,8 @@ export function useRtiRenderer({
     const wrapper = containerWrapper.value;
     const mountContainer = container.value;
     const rti = rtiInfo.value;
-    const width = wrapper.clientWidth;
-    const height = wrapper.clientHeight;
+    const width = Math.max(1, wrapper.clientWidth);
+    const height = Math.max(1, wrapper.clientHeight);
 
     const newScene = new THREE.Scene();
     newScene.background = new THREE.Color(0x0f172a);
@@ -355,7 +357,8 @@ export function useRtiRenderer({
     const { minZoom, maxZoom } = computeZoomLimits(width, height, rti.width, rti.height);
     orbit.minZoom = minZoom;
     orbit.maxZoom = maxZoom;
-    cam.zoom = Math.min(maxZoom, Math.max(minZoom, cam.zoom));
+    const zoom = Number.isFinite(cam.zoom) ? cam.zoom : minZoom;
+    cam.zoom = Math.min(maxZoom, Math.max(minZoom, zoom));
     cam.updateProjectionMatrix();
   }
 
@@ -363,6 +366,7 @@ export function useRtiRenderer({
     if (!containerWrapper.value || !camera.value || !renderer.value || !rtiInfo.value) return;
     const width = containerWrapper.value.clientWidth;
     const height = containerWrapper.value.clientHeight;
+    if (!viewportHasLayout(width, height)) return;
     const aspect = width / height;
     const viewSize = Math.max(rtiInfo.value.width, rtiInfo.value.height) / 2;
 

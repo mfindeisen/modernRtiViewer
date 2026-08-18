@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { computeFitToViewZoom, computeZoomLimits, formatZoomPercent } from '@/lib/cameraFit.js';
+import { computeFitToViewZoom, computeZoomLimits, formatZoomPercent, viewportHasLayout } from '@/lib/cameraFit.js';
+
+describe('viewportHasLayout', () => {
+  it('rejects empty or non-finite boxes', () => {
+    expect(viewportHasLayout(0, 800)).toBe(false);
+    expect(viewportHasLayout(800, 0)).toBe(false);
+    expect(viewportHasLayout(Number.NaN, 800)).toBe(false);
+    expect(viewportHasLayout(800, 600)).toBe(true);
+  });
+});
 
 describe('computeFitToViewZoom', () => {
   it('returns 1 for a square image in a square viewport', () => {

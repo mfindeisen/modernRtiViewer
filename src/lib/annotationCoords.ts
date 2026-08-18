@@ -43,14 +43,15 @@ export function worldToScreen(
   if (!camera || !domElement) return null;
   const w = domElement.clientWidth;
   const h = domElement.clientHeight;
+  if (w <= 0 || h <= 0) return null;
   const worldW = (camera.right - camera.left) / camera.zoom;
   const worldH = (camera.top - camera.bottom) / camera.zoom;
   const originX = camera.position.x + camera.left / camera.zoom;
   const originY = camera.position.y + camera.bottom / camera.zoom;
-  return {
-    x: ((wx - originX) / worldW) * w,
-    y: h - ((wy - originY) / worldH) * h,
-  };
+  const x = ((wx - originX) / worldW) * w;
+  const y = h - ((wy - originY) / worldH) * h;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
 }
 
 export function screenToWorld(
@@ -62,14 +63,15 @@ export function screenToWorld(
   if (!camera || !domElement) return null;
   const w = domElement.clientWidth;
   const h = domElement.clientHeight;
+  if (w <= 0 || h <= 0) return null;
   const worldW = (camera.right - camera.left) / camera.zoom;
   const worldH = (camera.top - camera.bottom) / camera.zoom;
   const originX = camera.position.x + camera.left / camera.zoom;
   const originY = camera.position.y + camera.bottom / camera.zoom;
-  return {
-    x: originX + (sx / w) * worldW,
-    y: originY + ((h - sy) / h) * worldH,
-  };
+  const x = originX + (sx / w) * worldW;
+  const y = originY + ((h - sy) / h) * worldH;
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
 }
 
 export function imageNormRadiusToScreen(

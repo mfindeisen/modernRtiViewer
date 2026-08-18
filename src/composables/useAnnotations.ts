@@ -126,6 +126,8 @@ export function useAnnotations({
       overlayShapes.value = [];
       return;
     }
+    const canvas = renderer.value.domElement;
+    if (canvas.clientWidth <= 0 || canvas.clientHeight <= 0) return;
     syncOverlaySize();
     const project = createProjectors();
     if (!project) {
