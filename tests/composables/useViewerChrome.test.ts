@@ -129,7 +129,7 @@ describe('useViewerChrome', () => {
     expect(hostHandlers.onSelectAnnotation).toHaveBeenCalledWith('ann-1');
   });
 
-  it('handles light, render mode, fit, and export host commands', () => {
+  it('handles light, render mode, fit, and export host commands', async () => {
     const host = document.createElement('modern-rti-viewer');
     document.body.appendChild(host);
     rootWrapper.remove();
@@ -166,6 +166,8 @@ describe('useViewerChrome', () => {
     host.dispatchEvent(new CustomEvent('rti-command', {
       detail: { type: 'export', download: false },
     }));
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(lightDir.value.x).toBeCloseTo(0);
     expect(lightDir.value.y).toBeCloseTo(0);

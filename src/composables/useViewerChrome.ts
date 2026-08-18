@@ -10,14 +10,20 @@ export function useViewerChrome({
   sidebarComponentRef,
   shareUrl,
   lightDir,
+  lightDir2,
   renderMode,
   specularExponent,
+  specularIntensity,
+  diffuseGain,
+  unsharpAmount,
+  dualLinked,
   colorGain,
   camera,
   controls,
   exportPng,
   setRenderMode,
   updateSpecular,
+  updateEnhancements,
   updateColorGain,
   setMode,
   fitToView,
@@ -52,8 +58,13 @@ export function useViewerChrome({
   function getCaptureState() {
     return captureRtiView({
       lightDir: lightDir.value,
+      lightDir2: lightDir2?.value,
       renderMode: renderMode.value,
       specularExponent: specularExponent.value,
+      specularIntensity: specularIntensity?.value,
+      diffuseGain: diffuseGain?.value,
+      unsharpAmount: unsharpAmount?.value,
+      dualLinked: dualLinked?.value,
       colorGain: colorGain.value,
       camera: camera.value,
       controls: controls.value,
@@ -63,20 +74,26 @@ export function useViewerChrome({
   function restoreView(view: Parameters<typeof applyRtiView>[0]) {
     applyRtiView(view, {
       lightDir,
+      lightDir2,
       renderMode,
       specularExponent,
+      specularIntensity,
+      diffuseGain,
+      unsharpAmount,
+      dualLinked,
       colorGain,
       camera,
       controls,
       setRenderMode,
       updateSpecular,
+      updateEnhancements,
       updateColorGain,
       onApplied: onViewRestored,
     });
   }
 
-  function exportImage() {
-    const dataURL = exportPng();
+  async function exportImage() {
+    const dataURL = await exportPng();
     if (!dataURL) return;
     const link = document.createElement('a');
     link.href = dataURL;
@@ -98,8 +115,17 @@ export function useViewerChrome({
         y: lightDir.value.y,
         z: lightDir.value.z,
       },
+      lightDir2: lightDir2 ? {
+        x: lightDir2.value.x,
+        y: lightDir2.value.y,
+        z: lightDir2.value.z,
+      } : undefined,
       renderMode: renderMode.value,
       specularExponent: specularExponent.value,
+      specularIntensity: specularIntensity?.value,
+      diffuseGain: diffuseGain?.value,
+      unsharpAmount: unsharpAmount?.value,
+      dualLinked: dualLinked?.value,
       colorGain: colorGain.value,
     });
     isCopied.value = false;
@@ -190,12 +216,20 @@ export function useViewerChrome({
         lightDir.value.set(0, 0, 1);
         requestRender();
         onViewRestored?.();
+      } else if (type === 'set-scale') {
+        hostHandlers.onSetScale?.(payload.scale ?? payload);
       } else if (type === 'export') {
-        if (payload.download === false) {
-          hostHandlers.onExport?.(exportPng());
-        } else {
-          exportImage();
-        }
+        void (async () => {
+          if (payload.download === false) {
+            const dataUrl = await exportPng({
+              fullRes: !!payload.fullRes,
+              includeAnnotations: !!payload.includeAnnotations,
+            });
+            hostHandlers.onExport?.(typeof dataUrl === 'string' ? dataUrl : null);
+            return;
+          }
+          await exportImage();
+        })();
       }
     };
 
@@ -241,5 +275,5 @@ export function useViewerChrome({
 }
 
 function isInteractionMode(value: unknown): value is ViewerMode {
-  return value === 'pan' || value === 'light' || value === 'annotate' || value === 'whitebalance';
+  return value === 'pan' || value === 'light' || value === 'annotate' || value === 'whitebalance' || value === 'measure';
 }

@@ -10,7 +10,7 @@ import type {
   RtiViewState,
 } from '../types/rti.js';
 
-export type ViewerMode = 'pan' | 'light' | 'annotate' | 'whitebalance';
+export type ViewerMode = 'pan' | 'light' | 'annotate' | 'whitebalance' | 'measure';
 
 export interface AnnotationDraft {
   type: string;
@@ -27,9 +27,11 @@ export interface UseRtiViewerOptions {
     shareUrl?: string;
     debug?: string;
     annotationEnabled?: boolean;
+    scaleEditable?: boolean;
     tileFormat?: string;
+    features?: unknown;
   };
-  emit: (event: 'annotation-create' | 'rti-loaded' | 'annotation-click' | 'view-change' | 'rti-export', ...args: unknown[]) => void;
+  emit: (event: 'annotation-create' | 'rti-loaded' | 'annotation-click' | 'annotation-update' | 'view-change' | 'rti-export' | 'scale-change', ...args: unknown[]) => void;
   rootWrapper: Ref<HTMLElement | null>;
   sidebarComponentRef: Ref<{ sidebarEl?: HTMLElement } | null>;
   compassComponentRef: Ref<{ compassEl?: HTMLElement } | null>;
@@ -46,8 +48,13 @@ export interface UseRtiInteractionOptions {
   setControlMode: (mode: ViewerMode) => void;
   onLeaveAnnotate?: () => void;
   onLeaveWhiteBalance?: () => void;
+  onLeaveMeasure?: () => void;
   onWhiteBalancePick?: (e: PointerEvent) => void;
   onLightChange?: () => void;
+  getDualMode?: () => boolean;
+  lightDir2?: Ref<THREE.Vector3>;
+  dualLinked?: Ref<boolean>;
+  onDualUnlink?: () => void;
 }
 
 export interface UseAnnotationsOptions {
@@ -57,6 +64,7 @@ export interface UseAnnotationsOptions {
   camera: Ref<THREE.OrthographicCamera | null>;
   quadtree: Ref<QuadtreeManager | null>;
   onCreate: (payload: AnnotationCreatePayload) => void;
+  onUpdate?: (ann: Annotation) => void;
   onClick: (ann: Annotation) => void;
   captureRtiView: () => RtiViewState;
 }
@@ -77,6 +85,14 @@ export interface UseRtiRendererOptions {
   lightDir: Ref<THREE.Vector3>;
   renderMode: Ref<number>;
   specularExponent: Ref<number>;
+  specularIntensity?: Ref<number>;
+  diffuseGain?: Ref<number>;
+  unsharpAmount?: Ref<number>;
+  dualLinked?: Ref<boolean>;
+  lightDir2?: Ref<THREE.Vector3>;
+  ridgeThreshold?: Ref<number>;
+  valleyThreshold?: Ref<number>;
+  lineWidth?: Ref<number>;
   colorGainVector: THREE.Vector3;
   getPanEnabled: () => boolean;
   onResize?: () => void;
@@ -91,12 +107,19 @@ export interface UseViewerChromeOptions {
   lightDir: Ref<THREE.Vector3>;
   renderMode: Ref<number>;
   specularExponent: Ref<number>;
+  specularIntensity?: Ref<number>;
+  diffuseGain?: Ref<number>;
+  unsharpAmount?: Ref<number>;
+  dualLinked?: Ref<boolean>;
+  lightDir2?: Ref<THREE.Vector3>;
   colorGain: Ref<ColorGain>;
   camera: Ref<THREE.OrthographicCamera | null>;
   controls: Ref<OrbitControls | null>;
-  exportPng: () => string | null;
+  exportPng: (options?: { fullRes?: boolean; includeAnnotations?: boolean }) => Promise<string | null> | string | null;
+  recordOrbitVideo?: (durationMs: number, onTick: (elapsedMs: number) => void) => Promise<Blob>;
   setRenderMode: (mode: number) => void;
   updateSpecular: () => void;
+  updateEnhancements?: () => void;
   updateColorGain: () => void;
   setMode: (mode: ViewerMode) => void;
   fitToView: () => void;
@@ -107,5 +130,6 @@ export interface UseViewerChromeOptions {
     onResize: () => void;
     onSelectAnnotation: (id: string | number | null) => void;
     onExport?: (dataUrl: string | null) => void;
+    onSetScale?: (value: unknown) => void;
   };
 }
