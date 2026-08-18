@@ -42,7 +42,7 @@
         :r="shape.r"
         fill="none"
         :stroke="shape.color"
-        :stroke-width="isSelected(shape) ? 3 : 2"
+        :stroke-width="strokeWidthFor(shape)"
         vector-effect="non-scaling-stroke"
         :stroke-dasharray="shape.draft ? '6 4' : undefined"
         class="pointer-events-none"
@@ -55,7 +55,7 @@
         :fill="shape.color"
         fill-opacity="0.9"
         :stroke="shape.color"
-        :stroke-width="isSelected(shape) ? 3 : 2"
+        :stroke-width="strokeWidthFor(shape)"
         vector-effect="non-scaling-stroke"
         class="pointer-events-none"
       />
@@ -67,18 +67,47 @@
         :height="shape.h"
         fill="none"
         :stroke="shape.color"
-        :stroke-width="isSelected(shape) ? 3 : 2"
+        :stroke-width="strokeWidthFor(shape)"
         vector-effect="non-scaling-stroke"
         :stroke-dasharray="shape.draft ? '6 4' : undefined"
         class="pointer-events-none"
       />
 
+      <g v-if="interactive && isSelected(shape) && !shape.draft">
+        <circle
+          v-if="shape.kind === 'circle'"
+          :cx="shape.cx + shape.r"
+          :cy="shape.cy"
+          r="5"
+          fill="#fff"
+          :stroke="shape.color"
+          stroke-width="1.5"
+          class="cursor-ew-resize"
+          @pointerdown.stop="emit('handle-down', shape, 'radius', $event)"
+        />
+        <template v-else-if="shape.kind === 'rect'">
+          <rect
+            v-for="handle in rectHandles(shape)"
+            :key="handle.id"
+            :x="handle.x - 4"
+            :y="handle.y - 4"
+            width="8"
+            height="8"
+            fill="#fff"
+            :stroke="shape.color"
+            stroke-width="1.5"
+            :class="handle.cursor"
+            @pointerdown.stop="emit('handle-down', shape, handle.id, $event)"
+          />
+        </template>
+      </g>
+
       <g v-if="shape.label" class="pointer-events-none">
         <rect
-          :x="(shape.labelX ?? 0) - 6"
-          :y="(shape.labelY ?? 0) - 16"
-          :width="(shape.labelWidth ?? 0) + 12"
-          height="22"
+          :x="(shape.labelX ?? 0) - labelPadX"
+          :y="(shape.labelY ?? 0) - labelBoxOffsetY"
+          :width="(shape.labelWidth ?? 0) + labelPadX * 2"
+          :height="shape.labelHeight ?? (labelPadY * 2 + labelLineHeight)"
           rx="4"
           :fill="isSelected(shape) ? 'rgba(30, 58, 138, 0.95)' : 'rgba(15, 23, 42, 0.92)'"
           stroke="rgba(255, 255, 255, 0.15)"
@@ -86,12 +115,20 @@
         />
         <text
           :x="shape.labelX ?? 0"
-          :y="shape.labelY ?? 0"
+          :y="(shape.labelY ?? 0) - labelBoxOffsetY + labelPadY + labelLineHeight / 2"
           fill="#f8fafc"
-          font-size="11"
+          :font-size="labelFontSize"
           font-family="system-ui, sans-serif"
           font-weight="500"
-        >{{ shape.label }}</text>
+          dominant-baseline="central"
+        >
+          <tspan
+            v-for="(line, index) in annotationLabelLines(shape)"
+            :key="index"
+            :x="shape.labelX ?? 0"
+            :dy="index === 0 ? 0 : labelLineHeight"
+          >{{ line || '\u00a0' }}</tspan>
+        </text>
       </g>
     </g>
   </svg>
@@ -100,6 +137,21 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import type { OverlayShape } from '../types/annotations.js';
+import {
+  ANNOTATION_LABEL_BOX_OFFSET_Y,
+  ANNOTATION_LABEL_FONT_SIZE,
+  ANNOTATION_LABEL_LINE_HEIGHT,
+  ANNOTATION_LABEL_PAD_X,
+  ANNOTATION_LABEL_PAD_Y,
+  annotationLabelLines,
+} from '../types/annotations.js';
+import { rectHandlePositions, type AnnotationEditHandle } from '../lib/annotationEdit.js';
+
+const labelFontSize = ANNOTATION_LABEL_FONT_SIZE;
+const labelLineHeight = ANNOTATION_LABEL_LINE_HEIGHT;
+const labelPadX = ANNOTATION_LABEL_PAD_X;
+const labelPadY = ANNOTATION_LABEL_PAD_Y;
+const labelBoxOffsetY = ANNOTATION_LABEL_BOX_OFFSET_Y;
 
 const props = defineProps<{
   visible?: boolean;
@@ -115,6 +167,7 @@ const emit = defineEmits<{
   pointermove: [event: PointerEvent];
   pointerup: [event: PointerEvent];
   'shape-click': [shape: OverlayShape];
+  'handle-down': [shape: OverlayShape, handle: AnnotationEditHandle, event: PointerEvent];
   wheel: [event: WheelEvent];
 }>();
 
@@ -125,5 +178,30 @@ function isSelected(shape: OverlayShape) {
   return props.selectedId != null
     && shape.annotationId != null
     && String(props.selectedId) === String(shape.annotationId);
+}
+
+function strokeWidthFor(shape: OverlayShape) {
+  return isSelected(shape) ? shape.strokeWidth + 1 : shape.strokeWidth;
+}
+
+const HANDLE_CURSORS: Record<string, string> = {
+  n: 'cursor-ns-resize',
+  s: 'cursor-ns-resize',
+  e: 'cursor-ew-resize',
+  w: 'cursor-ew-resize',
+  ne: 'cursor-nesw-resize',
+  sw: 'cursor-nesw-resize',
+  nw: 'cursor-nwse-resize',
+  se: 'cursor-nwse-resize',
+};
+
+function rectHandles(shape: Extract<OverlayShape, { kind: 'rect' }>) {
+  const positions = rectHandlePositions(shape);
+  return (Object.keys(positions) as Array<keyof typeof positions>).map((id) => ({
+    id,
+    x: positions[id].x,
+    y: positions[id].y,
+    cursor: HANDLE_CURSORS[id],
+  }));
 }
 </script>

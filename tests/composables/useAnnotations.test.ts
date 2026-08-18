@@ -8,6 +8,13 @@ import { useAnnotations } from '@/composables/useAnnotations.js';
 vi.mock('@/lib/annotationColors.js', () => ({
   loadAnnotationColor: () => '#f59e0b',
   saveAnnotationColor: vi.fn(),
+  normalizeAnnotationColor: (color: string) => color,
+}));
+
+vi.mock('@/lib/annotationStroke.js', () => ({
+  loadAnnotationStrokeWidth: () => 2,
+  saveAnnotationStrokeWidth: vi.fn(),
+  normalizeAnnotationStrokeWidth: (value: unknown) => Number(value) || 2,
 }));
 
 import { saveAnnotationColor } from '@/lib/annotationColors.js';
@@ -84,6 +91,13 @@ describe('useAnnotations', () => {
     expect(saveAnnotationColor).toHaveBeenCalledWith('#ff0000');
   });
 
+  it('persists selected annotation stroke width', () => {
+    const { selectAnnotationStrokeWidth, annotationStrokeWidth } = createAnnotations();
+    selectAnnotationStrokeWidth(7);
+
+    expect(annotationStrokeWidth.value).toBe(7);
+  });
+
   it('emits click for finished annotation shapes', () => {
     const ann: Annotation = { id: 'a1', type: 'point', geometry: { position: [0, 0] } };
     const { onShapeClick, selectedAnnotationId } = createAnnotations();
@@ -95,6 +109,7 @@ describe('useAnnotations', () => {
       cy: 0,
       r: 6,
       color: '#f59e0b',
+      strokeWidth: 2,
       draft: false,
       annotationId: 'a1',
       ann,

@@ -6,6 +6,7 @@ import {
   screenToWorld,
   imageNormRadiusToScreen,
   imageNormCircleRadius,
+  getImageWorldBounds,
 } from '../lib/annotationCoords.js';
 import {
   ANNOTATION_SHAPE_OPTIONS,
@@ -16,8 +17,19 @@ import {
 import {
   loadAnnotationColor,
   saveAnnotationColor,
+  normalizeAnnotationColor,
 } from '../lib/annotationColors.js';
+import {
+  loadAnnotationStrokeWidth,
+  saveAnnotationStrokeWidth,
+  normalizeAnnotationStrokeWidth,
+} from '../lib/annotationStroke.js';
 import { buildOverlayShapes } from '../lib/annotationOverlay.js';
+import {
+  applyAnnotationEdit,
+  hitTestOverlayShape,
+  type AnnotationEditHandle,
+} from '../lib/annotationEdit.js';
 import type { OverlayShape } from '../types/annotations.js';
 import type { Annotation } from '../types/rti.js';
 import type { AnnotationDraft, AnnotationOverlayExpose, UseAnnotationsOptions } from './types.js';
@@ -29,6 +41,7 @@ export function useAnnotations({
   camera,
   quadtree,
   onCreate,
+  onUpdate,
   onClick,
   captureRtiView,
 }: UseAnnotationsOptions) {
@@ -39,11 +52,17 @@ export function useAnnotations({
   const draftAnnotation = ref<AnnotationDraft | null>(null);
   const annotationShape = ref('circle');
   const annotationColor = ref(loadAnnotationColor());
+  const annotationStrokeWidth = ref(loadAnnotationStrokeWidth());
   const shapeMenuOpen = ref(false);
   const selectedAnnotationId = ref<string | null>(null);
 
   let drawingAnnotation = false;
   let annotateStartNorm: { x: number; y: number } | null = null;
+  let editing = false;
+  let editHandle: AnnotationEditHandle | null = null;
+  let editStartNorm: { x: number; y: number } | null = null;
+  let editStartGeometry: Record<string, unknown> | null = null;
+  let editAnnotation: Annotation | null = null;
 
   const activeShapeOption = computed(() =>
     ANNOTATION_SHAPE_OPTIONS.find((o) => o.id === annotationShape.value)
@@ -118,6 +137,7 @@ export function useAnnotations({
       draftAnnotation.value,
       annotationColor.value,
       project,
+      annotationStrokeWidth.value,
     );
   }
 
@@ -135,6 +155,11 @@ export function useAnnotations({
     draftAnnotation.value = null;
     annotateStartNorm = null;
     drawingAnnotation = false;
+    editing = false;
+    editHandle = null;
+    editStartNorm = null;
+    editStartGeometry = null;
+    editAnnotation = null;
   }
 
   function toggleAnnotateMode(setMode: (mode: 'annotate') => void) {
@@ -153,13 +178,23 @@ export function useAnnotations({
   }
 
   function selectAnnotationColor(color: string) {
-    annotationColor.value = color;
-    saveAnnotationColor(color);
+    const next = normalizeAnnotationColor(color);
+    annotationColor.value = next;
+    saveAnnotationColor(next);
+  }
+
+  function selectAnnotationStrokeWidth(width: number) {
+    annotationStrokeWidth.value = normalizeAnnotationStrokeWidth(width);
+    saveAnnotationStrokeWidth(annotationStrokeWidth.value);
+    updateOverlayShapes();
   }
 
   function shapeInteractionClass(shape: OverlayShape) {
-    if (shape.draft || currentMode.value === 'annotate') {
+    if (shape.draft) {
       return 'pointer-events-none';
+    }
+    if (currentMode.value === 'annotate') {
+      return 'pointer-events-auto cursor-move';
     }
     if (!shape.annotationId) {
       return 'pointer-events-none';
@@ -202,8 +237,70 @@ export function useAnnotations({
       type,
       geometry,
       color: annotationColor.value,
+      strokeWidth: annotationStrokeWidth.value,
       rtiView: captureRtiView(),
     });
+  }
+
+  function overlayPoint(e: PointerEvent) {
+    const overlay = getOverlayEl();
+    if (!overlay) return null;
+    const rect = overlay.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }
+
+  function imageAspect() {
+    const bounds = quadtree.value ? getImageWorldBounds(quadtree.value) : null;
+    if (!bounds || bounds.width <= 0) return 1;
+    return bounds.height / bounds.width;
+  }
+
+  function startEdit(ann: Annotation, handle: AnnotationEditHandle, start: { x: number; y: number }, pointerId: number) {
+    selectedAnnotationId.value = ann.id == null ? null : String(ann.id);
+    editing = true;
+    drawingAnnotation = false;
+    editHandle = handle;
+    editStartNorm = start;
+    editStartGeometry = { ...(ann.geometry as Record<string, unknown>) };
+    if (Array.isArray((ann.geometry as { position?: number[] }).position)) {
+      editStartGeometry.position = [...(ann.geometry as { position: number[] }).position];
+    }
+    if (Array.isArray((ann.geometry as { center?: number[] }).center)) {
+      editStartGeometry.center = [...(ann.geometry as { center: number[] }).center];
+    }
+    editAnnotation = ann;
+    getOverlayEl()?.setPointerCapture(pointerId);
+  }
+
+  function commitEdit() {
+    if (!editing || !editAnnotation || !editHandle || !editStartGeometry) return;
+    const geometry = editAnnotation.geometry;
+    editing = false;
+    editHandle = null;
+    editStartNorm = null;
+    editStartGeometry = null;
+    const ann = editAnnotation;
+    editAnnotation = null;
+    onUpdate?.(ann);
+    updateOverlayShapes();
+    return geometry;
+  }
+
+  function onShapePointerDown(shape: OverlayShape, e: PointerEvent, handle?: AnnotationEditHandle) {
+    if (currentMode.value !== 'annotate' || shape.draft || !shape.ann) return;
+    e.stopPropagation();
+    const pt = pointerToImageNorm(e);
+    if (!pt) return;
+    const hit = handle || (() => {
+      const screen = overlayPoint(e);
+      return screen ? hitTestOverlayShape(shape, screen.x, screen.y) : 'move';
+    })() || 'move';
+    startEdit(shape.ann, hit, pt, e.pointerId);
+    e.preventDefault();
+  }
+
+  function onHandlePointerDown(shape: OverlayShape, handle: AnnotationEditHandle, e: PointerEvent) {
+    onShapePointerDown(shape, e, handle);
   }
 
   function onAnnotationPointerDown(e: PointerEvent) {
@@ -211,6 +308,21 @@ export function useAnnotations({
     e.stopPropagation();
     const pt = pointerToImageNorm(e);
     if (!pt) return;
+
+    const screen = overlayPoint(e);
+    if (screen) {
+      for (let i = overlayShapes.value.length - 1; i >= 0; i--) {
+        const shape = overlayShapes.value[i];
+        if (shape.draft || !shape.ann) continue;
+        const hit = hitTestOverlayShape(shape, screen.x, screen.y);
+        if (hit) {
+          startEdit(shape.ann, hit, pt, e.pointerId);
+          e.preventDefault();
+          return;
+        }
+      }
+    }
+
     annotateStartNorm = pt;
     drawingAnnotation = true;
     getOverlayEl()?.setPointerCapture(e.pointerId);
@@ -230,6 +342,21 @@ export function useAnnotations({
   }
 
   function onAnnotationPointerMove(e: PointerEvent) {
+    if (editing && editAnnotation && editHandle && editStartNorm && editStartGeometry) {
+      const point = pointerToImageNorm(e);
+      if (!point) return;
+      editAnnotation.geometry = applyAnnotationEdit(
+        editAnnotation.type,
+        editStartGeometry,
+        editHandle,
+        editStartNorm,
+        point,
+        imageAspect(),
+      );
+      updateOverlayShapes();
+      return;
+    }
+
     if (!drawingAnnotation || !draftAnnotation.value) return;
     const point = pointerToImageNorm(e);
     if (!point) return;
@@ -261,6 +388,12 @@ export function useAnnotations({
   }
 
   function onAnnotationPointerUp(e: PointerEvent) {
+    if (editing) {
+      getOverlayEl()?.releasePointerCapture(e.pointerId);
+      commitEdit();
+      return;
+    }
+
     if (!drawingAnnotation) return;
     drawingAnnotation = false;
     getOverlayEl()?.releasePointerCapture(e.pointerId);
@@ -293,6 +426,7 @@ export function useAnnotations({
     overlaySize,
     annotationShape,
     annotationColor,
+    annotationStrokeWidth,
     shapeMenuOpen,
     selectedAnnotationId,
     activeShapeOption,
@@ -304,6 +438,7 @@ export function useAnnotations({
     toggleAnnotateMode,
     selectAnnotationShape,
     selectAnnotationColor,
+    selectAnnotationStrokeWidth,
     pointerToImageNorm,
     shapeInteractionClass,
     onShapeClick,
@@ -311,5 +446,7 @@ export function useAnnotations({
     onAnnotationPointerMove,
     onAnnotationPointerUp,
     onAnnotationWheel,
+    onShapePointerDown,
+    onHandlePointerDown,
   };
 }
