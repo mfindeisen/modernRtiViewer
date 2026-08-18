@@ -1,8 +1,9 @@
 import { createApp, ref, h } from 'vue';
 import RtiViewer from '../components/RtiViewer.vue';
-import { parseAnnotationEnabledAttr } from './webComponentAttrs.js';
+import { parseAnnotationEnabledAttr, parseFeaturesAttr } from './webComponentAttrs.js';
 
 import type { AnnotationCreatePayload } from '../types/rti.js';
+import type { ViewerConfigInput } from './viewerConfig.js';
 
 export class ModernRtiViewerElement extends HTMLElement {
   _pendingAnnotations: unknown[] = [];
@@ -13,14 +14,17 @@ export class ModernRtiViewerElement extends HTMLElement {
   _setAnnotationEnabled?: (val: boolean) => void;
   _setTileFormat?: (val: string | null) => void;
   _setDebug?: (val: boolean) => void;
+  _setScaleEditable?: (val: boolean) => void;
+  _setFeatures?: (val: ViewerConfigInput | undefined) => void;
 
   static get observedAttributes() {
-    return ['url', 'share-url', 'annotation-enabled', 'tile-format', 'debug'];
+    return ['url', 'share-url', 'annotation-enabled', 'tile-format', 'debug', 'scale-editable', 'features'];
   }
 
   connectedCallback() {
     const host = this;
     host._pendingAnnotations = host._pendingAnnotations || [];
+    if (!host.hasAttribute('tabindex')) host.tabIndex = 0;
 
     this.mountPoint = document.createElement('div');
     this.mountPoint.style.width = '100%';
@@ -34,6 +38,8 @@ export class ModernRtiViewerElement extends HTMLElement {
         const annotationEnabled = ref(parseAnnotationEnabledAttr(host.getAttribute('annotation-enabled')));
         const tileFormat = ref(host.getAttribute('tile-format') || '');
         const debug = ref(host.getAttribute('debug') === 'true');
+        const scaleEditable = ref(host.getAttribute('scale-editable') !== 'false');
+        const features = ref(parseFeaturesAttr(host.getAttribute('features')));
 
         host._setUrl = (val) => {
           url.value = val ?? '';
@@ -50,6 +56,12 @@ export class ModernRtiViewerElement extends HTMLElement {
         host._setDebug = (val) => {
           debug.value = val;
         };
+        host._setScaleEditable = (val) => {
+          scaleEditable.value = val;
+        };
+        host._setFeatures = (val) => {
+          features.value = val;
+        };
 
         return () => h(RtiViewer, {
           url: url.value,
@@ -57,8 +69,13 @@ export class ModernRtiViewerElement extends HTMLElement {
           annotationEnabled: annotationEnabled.value,
           tileFormat: tileFormat.value,
           debug: debug.value ? 'true' : undefined,
+          scaleEditable: scaleEditable.value,
+          features: features.value,
           onAnnotationCreate(payload: AnnotationCreatePayload) {
             host.dispatchEvent(new CustomEvent('annotation-create', { detail: payload, bubbles: true }));
+          },
+          onAnnotationUpdate(payload: unknown) {
+            host.dispatchEvent(new CustomEvent('annotation-update', { detail: payload, bubbles: true }));
           },
           onRtiLoaded(detail: unknown) {
             host.dispatchEvent(new CustomEvent('rti-loaded', { detail, bubbles: true }));
@@ -71,6 +88,9 @@ export class ModernRtiViewerElement extends HTMLElement {
           },
           onRtiExport(detail: unknown) {
             host.dispatchEvent(new CustomEvent('rti-export', { detail, bubbles: true }));
+          },
+          onScaleChange(detail: unknown) {
+            host.dispatchEvent(new CustomEvent('scale-change', { detail, bubbles: true }));
           },
         });
       },
@@ -97,6 +117,14 @@ export class ModernRtiViewerElement extends HTMLElement {
     }
     if (name === 'debug') {
       this._setDebug?.(newValue === 'true');
+      return;
+    }
+    if (name === 'scale-editable') {
+      this._setScaleEditable?.(newValue !== 'false');
+      return;
+    }
+    if (name === 'features') {
+      this._setFeatures?.(parseFeaturesAttr(newValue));
     }
   }
 
@@ -112,6 +140,8 @@ export class ModernRtiViewerElement extends HTMLElement {
     this._setAnnotationEnabled = undefined;
     this._setTileFormat = undefined;
     this._setDebug = undefined;
+    this._setScaleEditable = undefined;
+    this._setFeatures = undefined;
   }
 }
 

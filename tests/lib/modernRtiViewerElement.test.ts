@@ -6,18 +6,19 @@ const mountSpy = vi.fn();
 vi.mock('@/components/RtiViewer.vue', () => ({
   default: {
     name: 'RtiViewer',
-    props: ['url', 'shareUrl', 'annotationEnabled'],
+    props: ['url', 'shareUrl', 'annotationEnabled', 'features'],
     emits: ['annotation-create', 'rti-loaded', 'annotation-click'],
     mounted(this: { $emit: (event: string, payload?: unknown) => void }) {
       this.$emit('annotation-create', { id: 'a1' });
       this.$emit('rti-loaded', { type: 1 });
       this.$emit('annotation-click', { id: 'a1' });
     },
-    render(this: { url: string; shareUrl: string; annotationEnabled: boolean }) {
+    render(this: { url: string; shareUrl: string; annotationEnabled: boolean; features?: unknown }) {
       mountSpy({
         url: this.url,
         shareUrl: this.shareUrl,
         annotationEnabled: this.annotationEnabled,
+        features: this.features,
       });
       return null;
     },
@@ -79,6 +80,18 @@ describe('ModernRtiViewerElement', () => {
 
     expect(mountSpy).toHaveBeenCalledWith(expect.objectContaining({
       annotationEnabled: true,
+    }));
+  });
+
+  it('updates features through attributeChangedCallback', async () => {
+    document.body.appendChild(host);
+    mountSpy.mockClear();
+
+    host.setAttribute('features', '{"lineDrawing":false}');
+    await nextTick();
+
+    expect(mountSpy).toHaveBeenCalledWith(expect.objectContaining({
+      features: { features: { lineDrawing: false } },
     }));
   });
 
