@@ -44,4 +44,16 @@ describe('useRenderSettings', () => {
     expect(meshUpdaters.setRenderModeOnMeshes).toHaveBeenLastCalledWith(0);
     expect(meshUpdaters.updateSpecularOnMeshes).toHaveBeenCalled();
   });
+
+  it('resets line drawing thresholds with shading', () => {
+    const meshUpdaters = {
+      setRenderModeOnMeshes: vi.fn(),
+      updateSpecularOnMeshes: vi.fn(),
+      updateEnhancementsOnMeshes: vi.fn(),
+    };
+    const { ridgeThreshold, onRidgeThresholdChange, resetShading } = useRenderSettings(meshUpdaters);
+    onRidgeThresholdChange(0.4);
+    resetShading();
+    expect(ridgeThreshold.value).toBe(0.14);
+  });
 });

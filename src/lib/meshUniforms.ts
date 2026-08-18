@@ -6,12 +6,21 @@ interface MeshWithShaderUniforms {
   material?: THREE.Material & { uniforms?: Record<string, { value: THREE.Vector3 | number }> };
 }
 
+export interface EnhancementUniformState {
+  diffuseGain: Ref<number>;
+  unsharpAmount: Ref<number>;
+  specularIntensity: Ref<number>;
+  lightDir2: Ref<THREE.Vector3>;
+  dualLinked: Ref<boolean>;
+}
+
 interface CreateMeshUniformSyncOptions {
   tileMeshes: Map<number, MeshWithShaderUniforms>;
   lightDir: Ref<THREE.Vector3>;
   renderMode: Ref<number>;
   specularExponent: Ref<number>;
   colorGainVector: THREE.Vector3;
+  enhancements?: EnhancementUniformState;
 }
 
 interface VectorUniform {
@@ -25,12 +34,27 @@ function isVectorUniform(value: unknown): value is VectorUniform {
       || typeof (value as VectorUniform).set === 'function');
 }
 
+function syncEnhancements(
+  uniforms: Record<string, { value: THREE.Vector3 | number }>,
+  enhancements: EnhancementUniformState | undefined,
+) {
+  if (!enhancements) return;
+  if (uniforms.uDiffuseGain) uniforms.uDiffuseGain.value = enhancements.diffuseGain.value;
+  if (uniforms.uUnsharpAmount) uniforms.uUnsharpAmount.value = enhancements.unsharpAmount.value;
+  if (uniforms.uSpecularIntensity) uniforms.uSpecularIntensity.value = enhancements.specularIntensity.value;
+  if (uniforms.uDualLinked) uniforms.uDualLinked.value = enhancements.dualLinked.value ? 1.0 : 0.0;
+  if (isVectorUniform(uniforms.uLightDir2?.value) && uniforms.uLightDir2.value.copy) {
+    uniforms.uLightDir2.value.copy(enhancements.lightDir2.value);
+  }
+}
+
 export function createMeshUniformSync({
   tileMeshes,
   lightDir,
   renderMode,
   specularExponent,
   colorGainVector,
+  enhancements,
 }: CreateMeshUniformSyncOptions) {
   function forEachMeshUniform(apply: (uniforms: Record<string, { value: THREE.Vector3 | number }>) => void) {
     for (const mesh of tileMeshes.values()) {
@@ -49,6 +73,7 @@ export function createMeshUniformSync({
     if (isVectorUniform(uniforms.uColorGain?.value) && uniforms.uColorGain.value.copy) {
       uniforms.uColorGain.value.copy(colorGainVector);
     }
+    syncEnhancements(uniforms, enhancements);
   }
 
   function setRenderModeOnMeshes(mode: number) {
@@ -60,7 +85,14 @@ export function createMeshUniformSync({
   function updateSpecularOnMeshes() {
     forEachMeshUniform((uniforms) => {
       if (uniforms.uSpecularExponent) uniforms.uSpecularExponent.value = specularExponent.value;
+      if (enhancements && uniforms.uSpecularIntensity) {
+        uniforms.uSpecularIntensity.value = enhancements.specularIntensity.value;
+      }
     });
+  }
+
+  function updateEnhancementsOnMeshes() {
+    forEachMeshUniform((uniforms) => syncEnhancements(uniforms, enhancements));
   }
 
   function updateColorGainOnMeshes() {
@@ -104,6 +136,7 @@ export function createMeshUniformSync({
     syncMeshUniforms,
     setRenderModeOnMeshes,
     updateSpecularOnMeshes,
+    updateEnhancementsOnMeshes,
     updateColorGainOnMeshes,
     setReferenceLightOnMeshes,
     setNeutralColorGainOnMeshes,

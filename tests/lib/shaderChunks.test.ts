@@ -17,8 +17,11 @@ describe('shaderChunks', () => {
     expect(RTI_FRAGMENT_PREAMBLE).toContain('clipPaddedBounds');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('discard');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('slopeHeatmap');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('packedNormalColor');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applyColorGain');
-    expect(RTI_FRAGMENT_PREAMBLE).toContain('shadedNormalColor');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('finishColor');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('applyDiffuseGain');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('dualLightDir');
   });
 
   it('builds fragment shaders with custom body', () => {
@@ -55,6 +58,10 @@ describe('shaderChunks', () => {
     expect(material.fragmentShader).toContain('clipPaddedBounds');
     expect(material.fragmentShader).toContain('tex8');
     expect(material.fragmentShader).toContain('uCoeffCount');
+    expect(material.fragmentShader).toContain('hshNormal');
+    expect(material.fragmentShader).toContain('uRenderMode == 6');
+    expect(material.fragmentShader).toContain('packedNormalColor');
+    expect(material.fragmentShader).toContain('uRenderMode == 6');
     expect(material.uniforms.uCoeffCount.value).toBe(9);
     expect(material.uniforms.uBiasHi.value.x).toBe(4);
     expect(material.uniforms.uBias8.value).toBe(8);
