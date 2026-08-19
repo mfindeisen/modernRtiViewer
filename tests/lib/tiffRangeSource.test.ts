@@ -35,7 +35,9 @@ describe('ExactRangeSource', () => {
   });
 
   it('issues Range fetches with cache: no-store', async () => {
-    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3, 4]), { status: 206 }));
+    const fetchMock = vi.fn<typeof fetch>(
+      async () => new Response(new Uint8Array([1, 2, 3, 4]), { status: 206 }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     const source = new ExactRangeSource('/static/uploads/example.tif');
@@ -43,7 +45,7 @@ describe('ExactRangeSource', () => {
 
     expect([...new Uint8Array(buf)]).toEqual([1, 2, 3, 4]);
     expect(fetchMock).toHaveBeenCalledOnce();
-    expect(fetchMock.mock.calls[0][1]).toMatchObject({
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
       cache: 'no-store',
       headers: { Range: 'bytes=10-13' },
     });
