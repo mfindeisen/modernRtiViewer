@@ -257,7 +257,7 @@ export function useRtiViewer({
   function setViewerRenderMode(mode: number) {
     const next = isRenderModeAllowed(mode) ? mode : DEFAULT_RENDER_MODE;
     setRenderMode(next);
-    if (next === RENDER_MODE_LINE_DRAWING) showEnhancements.value = true;
+    if (next === 1 || next === RENDER_MODE_LINE_DRAWING) showEnhancements.value = true;
   }
 
   const chrome = useViewerChrome({

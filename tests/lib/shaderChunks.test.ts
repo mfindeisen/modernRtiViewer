@@ -20,7 +20,10 @@ describe('shaderChunks', () => {
     expect(RTI_FRAGMENT_PREAMBLE).toContain('packedNormalColor');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applyColorGain');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('finishColor');
-    expect(RTI_FRAGMENT_PREAMBLE).toContain('applyDiffuseGain');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('applyPhotometricGain');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('applyUnsharpMask');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('applySpecularBlinn');
+    expect(RTI_FRAGMENT_PREAMBLE).not.toContain('applySpecularBoost');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('dualLightDir');
   });
 
@@ -35,6 +38,7 @@ describe('shaderChunks', () => {
     expect(shader).toContain('outsideBounds');
     expect(shader).not.toContain('uRenderMode');
     expect(shader).toContain('applyColorGain');
+    expect(shader).toContain('dFdx');
   });
 
   it('includes RGB PTM coefficient sampling in the shader library', async () => {
@@ -62,8 +66,40 @@ describe('shaderChunks', () => {
     expect(material.fragmentShader).toContain('uRenderMode == 6');
     expect(material.fragmentShader).toContain('packedNormalColor');
     expect(material.fragmentShader).toContain('uRenderMode == 6');
+    expect(material.fragmentShader).toContain('applyPhotometricGain');
+    expect(material.fragmentShader).toContain('applySpecularBlinn');
+    expect(material.fragmentShader).toContain('applyUnsharpMask');
+    expect(material.fragmentShader).not.toContain('applySpecularBoost');
     expect(material.uniforms.uCoeffCount.value).toBe(9);
     expect(material.uniforms.uBiasHi.value.x).toBe(4);
     expect(material.uniforms.uBias8.value).toBe(8);
+  });
+
+  it('scales PTM quadratic terms for CHI diffuse gain and uses Blinn-Phong specular', async () => {
+    const THREE = await import('three');
+    const { LrgbPtmMaterial, RgbPtmMaterial } = await import('@/lib/RtiShaders.js');
+    const tex = new THREE.Texture();
+    const lrgb = LrgbPtmMaterial(
+      [tex, tex, tex],
+      new THREE.Vector3(0, 0, 1),
+      [0, 0, 0, 0, 0, 0],
+      [1, 1, 1, 1, 1, 1],
+      new THREE.Vector4(),
+      new THREE.Vector3(1, 1, 1),
+    );
+    expect(lrgb.fragmentShader).toContain('(a0*l0 + a1*l1 + a2*l2) * uDiffuseGain');
+    expect(lrgb.fragmentShader).toContain('applySpecularBlinn');
+    expect(lrgb.fragmentShader).not.toContain('applySpecularBoost');
+
+    const rgb = RgbPtmMaterial(
+      [tex, tex, tex, tex, tex, tex],
+      new THREE.Vector3(0, 0, 1),
+      [0, 0, 0, 0, 0, 0],
+      [1, 1, 1, 1, 1, 1],
+      new THREE.Vector4(),
+      new THREE.Vector3(1, 1, 1),
+    );
+    expect(rgb.fragmentShader).toContain('quad * uDiffuseGain');
+    expect(rgb.fragmentShader).toContain('applySpecularBlinn');
   });
 });

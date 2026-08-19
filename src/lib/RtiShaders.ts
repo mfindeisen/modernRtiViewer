@@ -70,7 +70,7 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
       color += c4 * l4 + c5 * l5 + c6 * l6 + c7 * l7 + c8 * l8;
     }
 
-    return color;
+    return applyPhotometricGain(color, c0 * l0);
   }
 
   vec3 hshNormal() {
@@ -87,22 +87,25 @@ const HSH_FRAGMENT = buildRtiFragmentShader(`
     clipPaddedBounds();
 
     vec3 color = evaluateHsh(uLightDir);
+    vec3 N = hshNormal();
 
     if (uRenderMode == 0) {
-      gl_FragColor = vec4(finishColor(color), 1.0);
+      gl_FragColor = vec4(finishColor(applyUnsharpMask(color, N, uLightDir)), 1.0);
     } else if (uRenderMode == 1) {
-      float lum = dot(color, vec3(0.299, 0.587, 0.114));
-      gl_FragColor = vec4(finishColor(applySpecularBoost(color, lum)), 1.0);
+      vec3 shaded = applyUnsharpMask(color, N, uLightDir);
+      gl_FragColor = vec4(finishColor(applySpecularBlinn(shaded, sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 2) {
-      gl_FragColor = vec4(applyColorGain(shadedNormalColor(hshNormal(), uLightDir)), 1.0);
+      gl_FragColor = vec4(applyColorGain(shadedNormalColor(sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 3) {
-      gl_FragColor = vec4(applyColorGain(slopeHeatmap(hshNormal())), 1.0);
+      gl_FragColor = vec4(applyColorGain(slopeHeatmap(sharpenNormal(N))), 1.0);
     } else if (uRenderMode == 4) {
-      vec3 color2 = evaluateHsh(dualLightDir(uLightDir));
-      vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
+      vec3 L2 = dualLightDir(uLightDir);
+      vec3 color2 = evaluateHsh(L2);
+      vec3 dualColor = (max(vec3(0.0), applyUnsharpMask(color, N, uLightDir)) * vec3(1.0, 0.3, 0.1))
+        + (max(vec3(0.0), applyUnsharpMask(color2, N, L2)) * vec3(0.1, 0.5, 1.0));
       gl_FragColor = vec4(finishColor(dualColor), 1.0);
     } else if (uRenderMode == 6) {
-      gl_FragColor = vec4(packedNormalColor(hshNormal()), 1.0);
+      gl_FragColor = vec4(packedNormalColor(sharpenNormal(N)), 1.0);
     }
   }
 `);
@@ -155,25 +158,31 @@ const LRGB_PTM_FRAGMENT = buildRtiFragmentShader(`
     float a4 = (coeffL.y - uBias2.y / 255.0) * uScale2.y;
     float a5 = (coeffL.z - uBias2.z / 255.0) * uScale2.z;
 
-    float lum = a0*l0 + a1*l1 + a2*l2 + a3*l3 + a4*l4 + a5*l5;
+    float lum = (a0*l0 + a1*l1 + a2*l2) * uDiffuseGain + a3*l3 + a4*l4 + a5*l5;
+    vec3 N = ptmNormal(a0, a1, a2, a3, a4);
+    vec3 lit = color * lum;
 
     if (uRenderMode == 0) {
-      gl_FragColor = vec4(finishColor(color * lum), 1.0);
+      gl_FragColor = vec4(finishColor(applyUnsharpMask(lit, N, uLightDir)), 1.0);
     } else if (uRenderMode == 1) {
-      gl_FragColor = vec4(finishColor(applySpecularBoost(color * lum, lum)), 1.0);
+      vec3 shaded = applyUnsharpMask(lit, N, uLightDir);
+      gl_FragColor = vec4(finishColor(applySpecularBlinn(shaded, sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 2) {
-      gl_FragColor = vec4(applyColorGain(shadedNormalColor(ptmNormal(a0, a1, a2, a3, a4), uLightDir)), 1.0);
+      gl_FragColor = vec4(applyColorGain(shadedNormalColor(sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 3) {
-      gl_FragColor = vec4(applyColorGain(slopeHeatmap(ptmNormal(a0, a1, a2, a3, a4))), 1.0);
+      gl_FragColor = vec4(applyColorGain(slopeHeatmap(sharpenNormal(N))), 1.0);
     } else if (uRenderMode == 4) {
       vec3 L2 = dualLightDir(uLightDir);
       float u2 = L2.x;
       float v2 = L2.y;
-      float lum2 = a0*(u2*u2) + a1*(v2*v2) + a2*(u2*v2) + a3*u2 + a4*v2 + a5;
-      vec3 dualColor = color * (vec3(1.0, 0.3, 0.1) * max(0.0, lum) + vec3(0.1, 0.5, 1.0) * max(0.0, lum2));
+      float lum2 = (a0*(u2*u2) + a1*(v2*v2) + a2*(u2*v2)) * uDiffuseGain + a3*u2 + a4*v2 + a5;
+      vec3 dualColor = color * (
+        vec3(1.0, 0.3, 0.1) * max(0.0, applyUnsharpMask(vec3(lum), N, uLightDir).r)
+        + vec3(0.1, 0.5, 1.0) * max(0.0, applyUnsharpMask(vec3(lum2), N, L2).r)
+      );
       gl_FragColor = vec4(finishColor(dualColor), 1.0);
     } else if (uRenderMode == 6) {
-      gl_FragColor = vec4(packedNormalColor(ptmNormal(a0, a1, a2, a3, a4)), 1.0);
+      gl_FragColor = vec4(packedNormalColor(sharpenNormal(N)), 1.0);
     }
   }
 `);
@@ -202,7 +211,8 @@ const RGB_PTM_FRAGMENT = buildRtiFragmentShader(`
     vec3 a3 = decodeCoeff(tex3, uBias2.x, uScale2.x);
     vec3 a4 = decodeCoeff(tex4, uBias2.y, uScale2.y);
     vec3 a5 = decodeCoeff(tex5, uBias2.z, uScale2.z);
-    return a0 * (u * u) + a1 * (v * v) + a2 * (u * v) + a3 * u + a4 * v + a5;
+    vec3 quad = a0 * (u * u) + a1 * (v * v) + a2 * (u * v);
+    return quad * uDiffuseGain + a3 * u + a4 * v + a5;
   }
 
   vec3 ptmNormal() {
@@ -231,23 +241,25 @@ const RGB_PTM_FRAGMENT = buildRtiFragmentShader(`
     float u = uLightDir.x;
     float v = uLightDir.y;
     vec3 color = evalRgbPtm(u, v);
+    vec3 N = ptmNormal();
 
     if (uRenderMode == 0) {
-      gl_FragColor = vec4(finishColor(color), 1.0);
+      gl_FragColor = vec4(finishColor(applyUnsharpMask(color, N, uLightDir)), 1.0);
     } else if (uRenderMode == 1) {
-      float lum = dot(color, vec3(0.299, 0.587, 0.114));
-      gl_FragColor = vec4(finishColor(applySpecularBoost(color, lum)), 1.0);
+      vec3 shaded = applyUnsharpMask(color, N, uLightDir);
+      gl_FragColor = vec4(finishColor(applySpecularBlinn(shaded, sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 2) {
-      gl_FragColor = vec4(applyColorGain(shadedNormalColor(ptmNormal(), uLightDir)), 1.0);
+      gl_FragColor = vec4(applyColorGain(shadedNormalColor(sharpenNormal(N), uLightDir)), 1.0);
     } else if (uRenderMode == 3) {
-      gl_FragColor = vec4(applyColorGain(slopeHeatmap(ptmNormal())), 1.0);
+      gl_FragColor = vec4(applyColorGain(slopeHeatmap(sharpenNormal(N))), 1.0);
     } else if (uRenderMode == 4) {
       vec3 L2 = dualLightDir(uLightDir);
       vec3 color2 = evalRgbPtm(L2.x, L2.y);
-      vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
+      vec3 dualColor = (max(vec3(0.0), applyUnsharpMask(color, N, uLightDir)) * vec3(1.0, 0.3, 0.1))
+        + (max(vec3(0.0), applyUnsharpMask(color2, N, L2)) * vec3(0.1, 0.5, 1.0));
       gl_FragColor = vec4(finishColor(dualColor), 1.0);
     } else if (uRenderMode == 6) {
-      gl_FragColor = vec4(packedNormalColor(ptmNormal()), 1.0);
+      gl_FragColor = vec4(packedNormalColor(sharpenNormal(N)), 1.0);
     }
   }
 `);
@@ -302,48 +314,64 @@ const NEURAL_RTI_FRAGMENT = buildRtiFragmentShader(`
     return vec3(rgb[0], rgb[1], rgb[2]);
   }
 
+  vec3 neuralNormal(vec4 latent) {
+    float eps = 0.005;
+    float z_eps = sqrt(1.0 - eps * eps);
+
+    vec3 c0 = evaluateMLP(vec3(0.0, 0.0, 1.0), latent);
+    vec3 cx = evaluateMLP(vec3(eps, 0.0, z_eps), latent);
+    vec3 cy = evaluateMLP(vec3(0.0, eps, z_eps), latent);
+
+    float y0 = dot(c0, vec3(0.299, 0.587, 0.114));
+    float yx = dot(cx, vec3(0.299, 0.587, 0.114));
+    float yy = dot(cy, vec3(0.299, 0.587, 0.114));
+
+    float gx = (yx - y0) / eps;
+    float gy = (yy - y0) / eps;
+    return normalize(vec3(-gx * 4.0, -gy * 4.0, 1.0));
+  }
+
   void main() {
     clipPaddedBounds();
 
     vec4 latent = texture2D(tex0, vUv);
     vec3 color = evaluateMLP(uLightDir, latent);
+    if (uDiffuseGain > 1.001) {
+      vec3 zenith = evaluateMLP(vec3(0.0, 0.0, 1.0), latent);
+      color = applyPhotometricGain(color, zenith);
+    }
 
     if (uRenderMode == 0) {
-      gl_FragColor = vec4(finishColor(color), 1.0);
+      if (uUnsharpAmount > 0.001) {
+        vec3 N = neuralNormal(latent);
+        gl_FragColor = vec4(finishColor(applyUnsharpMask(color, N, uLightDir)), 1.0);
+      } else {
+        gl_FragColor = vec4(finishColor(color), 1.0);
+      }
     } else if (uRenderMode == 7) {
       gl_FragColor = vec4(applyColorGain(latent.rgb), 1.0);
     } else {
-      float eps = 0.005;
-      float z_eps = sqrt(1.0 - eps * eps);
-
-      vec3 c0 = evaluateMLP(vec3(0.0, 0.0, 1.0), latent);
-      vec3 cx = evaluateMLP(vec3(eps, 0.0, z_eps), latent);
-      vec3 cy = evaluateMLP(vec3(0.0, eps, z_eps), latent);
-
-      float y0 = dot(c0, vec3(0.299, 0.587, 0.114));
-      float yx = dot(cx, vec3(0.299, 0.587, 0.114));
-      float yy = dot(cy, vec3(0.299, 0.587, 0.114));
-
-      float gx = (yx - y0) / eps;
-      float gy = (yy - y0) / eps;
-      vec3 N = normalize(vec3(-gx * 4.0, -gy * 4.0, 1.0));
+      vec3 N = neuralNormal(latent);
 
       if (uRenderMode == 1) {
-        vec3 L = normalize(uLightDir);
-        vec3 V = vec3(0.0, 0.0, 1.0);
-        vec3 H = normalize(L + V);
-        float specular = pow(max(0.0, dot(N, H)), uSpecularExponent);
-        gl_FragColor = vec4(finishColor(color + vec3(specular * uSpecularIntensity)), 1.0);
+        vec3 shaded = applyUnsharpMask(color, N, uLightDir);
+        gl_FragColor = vec4(finishColor(applySpecularBlinn(shaded, sharpenNormal(N), uLightDir)), 1.0);
       } else if (uRenderMode == 2) {
-        gl_FragColor = vec4(applyColorGain(shadedNormalColor(N, uLightDir)), 1.0);
+        gl_FragColor = vec4(applyColorGain(shadedNormalColor(sharpenNormal(N), uLightDir)), 1.0);
       } else if (uRenderMode == 3) {
-        gl_FragColor = vec4(applyColorGain(slopeHeatmap(N)), 1.0);
+        gl_FragColor = vec4(applyColorGain(slopeHeatmap(sharpenNormal(N))), 1.0);
       } else if (uRenderMode == 4) {
-        vec3 color2 = evaluateMLP(dualLightDir(uLightDir), latent);
-        vec3 dualColor = (max(vec3(0.0), color) * vec3(1.0, 0.3, 0.1)) + (max(vec3(0.0), color2) * vec3(0.1, 0.5, 1.0));
+        vec3 L2 = dualLightDir(uLightDir);
+        vec3 color2 = evaluateMLP(L2, latent);
+        if (uDiffuseGain > 1.001) {
+          vec3 zenith = evaluateMLP(vec3(0.0, 0.0, 1.0), latent);
+          color2 = applyPhotometricGain(color2, zenith);
+        }
+        vec3 dualColor = (max(vec3(0.0), applyUnsharpMask(color, N, uLightDir)) * vec3(1.0, 0.3, 0.1))
+          + (max(vec3(0.0), applyUnsharpMask(color2, N, L2)) * vec3(0.1, 0.5, 1.0));
         gl_FragColor = vec4(finishColor(dualColor), 1.0);
       } else if (uRenderMode == 6) {
-        gl_FragColor = vec4(packedNormalColor(N), 1.0);
+        gl_FragColor = vec4(packedNormalColor(sharpenNormal(N)), 1.0);
       }
     }
   }
