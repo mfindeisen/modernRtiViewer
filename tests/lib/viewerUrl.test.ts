@@ -47,6 +47,17 @@ describe('buildShareUrl', () => {
     expect(parsed.specularExponent).toBeUndefined();
   });
 
+  it('includes exposure when it differs from the default', () => {
+    const url = buildShareUrl('https://example.com', {
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      lightDir: { x: 0, y: 0, z: 1 },
+      renderMode: 0,
+      exposure: 1.5,
+      colorGain: { r: 1, g: 1, b: 1 },
+    });
+    expect(parseViewHash(url.split('#')[1]).exposure).toBe(1.5);
+  });
+
   it('includes specular when it differs from the default', () => {
     const url = buildShareUrl('https://example.com', {
       camera: { cx: 0, cy: 0, zoom: 1 },

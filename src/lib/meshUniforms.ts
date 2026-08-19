@@ -9,6 +9,7 @@ interface MeshWithShaderUniforms {
 export interface EnhancementUniformState {
   diffuseGain: Ref<number>;
   unsharpAmount: Ref<number>;
+  exposure: Ref<number>;
   specularIntensity: Ref<number>;
   lightDir2: Ref<THREE.Vector3>;
   dualLinked: Ref<boolean>;
@@ -41,6 +42,7 @@ function syncEnhancements(
   if (!enhancements) return;
   if (uniforms.uDiffuseGain) uniforms.uDiffuseGain.value = enhancements.diffuseGain.value;
   if (uniforms.uUnsharpAmount) uniforms.uUnsharpAmount.value = enhancements.unsharpAmount.value;
+  if (uniforms.uExposure) uniforms.uExposure.value = enhancements.exposure.value;
   if (uniforms.uSpecularIntensity) uniforms.uSpecularIntensity.value = enhancements.specularIntensity.value;
   if (uniforms.uDualLinked) uniforms.uDualLinked.value = enhancements.dualLinked.value ? 1.0 : 0.0;
   if (isVectorUniform(uniforms.uLightDir2?.value) && uniforms.uLightDir2.value.copy) {

@@ -12,13 +12,22 @@
       <div class="relative flex flex-col bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-5xl h-[min(46rem,92%)] overflow-hidden text-slate-300">
         <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-700 shrink-0">
           <div class="min-w-0">
-            <h2 class="text-base font-semibold text-white truncate flex items-center gap-2">
+            <h2 class="text-base font-semibold text-white flex items-center gap-2 flex-wrap">
               3D surface
               <ExperimentalBadge />
+              <span class="text-[10px] font-medium text-amber-200/85">Visualization only — not scientifically accurate</span>
             </h2>
             <p class="text-[11px] text-slate-400 truncate">{{ subtitle }}</p>
           </div>
           <div class="flex items-center gap-2 shrink-0">
+            <button
+              v-if="canRemask"
+              type="button"
+              class="px-3 py-1.5 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-600"
+              @click="emit('remask')"
+            >
+              Edit mask
+            </button>
             <button
               type="button"
               class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500"
@@ -35,7 +44,7 @@
         </div>
         <div ref="viewport" class="relative flex-1 min-h-0 bg-slate-950 touch-none"></div>
         <p class="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-700 shrink-0">
-          Experimental · drag to orbit · scroll to zoom · one-sided reconstruction from RTI normals
+          Experimental · visualization only · not a measured 3D scan · drag to orbit · scroll to zoom
         </p>
       </div>
     </div>
@@ -53,9 +62,10 @@ import ExperimentalBadge from './ExperimentalBadge.vue';
 const props = defineProps<{
   open: boolean;
   surface: ReconstructedSurface | null;
+  canRemask?: boolean;
 }>();
 
-const emit = defineEmits(['close', 'download']);
+const emit = defineEmits(['close', 'download', 'remask']);
 const viewport = ref<HTMLElement | null>(null);
 
 const subtitle = computed(() => {

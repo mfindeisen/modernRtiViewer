@@ -3,6 +3,7 @@ import { RTI_VERTEX_SHADER, buildRtiFragmentShader } from './shaderChunks.js';
 import {
   DEFAULT_DIFFUSE_GAIN,
   DEFAULT_UNSHARP_AMOUNT,
+  DEFAULT_EXPOSURE,
   DEFAULT_SPECULAR_INTENSITY,
 } from './rtiEnhancements.js';
 
@@ -385,6 +386,7 @@ function enhancementUniforms() {
   return {
     uDiffuseGain: { value: DEFAULT_DIFFUSE_GAIN },
     uUnsharpAmount: { value: DEFAULT_UNSHARP_AMOUNT },
+    uExposure: { value: DEFAULT_EXPOSURE },
     uSpecularIntensity: { value: DEFAULT_SPECULAR_INTENSITY },
     uLightDir2: { value: new THREE.Vector3(0, 0, 1) },
     uDualLinked: { value: 1.0 },

@@ -1,8 +1,25 @@
 import { fft2d, nextPow2 } from './fft2d.js';
+import { flipMaskY, resizeMask } from './meshMask.js';
 
-export const MAX_MESH_DIMENSION = 1024;
+export const MESH_MASK_DIMENSION = 1024;
+export const MAX_MESH_DIMENSION = 8192;
+export const DEFAULT_MESH_RESOLUTION = 2048;
+export const MESH_RESOLUTION_PRESETS = [1024, 2048, 4096];
+
+export function meshResolutionChoices(sourceMax: number) {
+  const max = Math.min(
+    MAX_MESH_DIMENSION,
+    Math.max(1, Math.round(sourceMax || DEFAULT_MESH_RESOLUTION)),
+  );
+  const threshold = max * 0.92;
+  const values = MESH_RESOLUTION_PRESETS.filter((value) => value <= threshold);
+  if (!values.includes(max)) values.push(max);
+  return values;
+}
+
 const ALPHA_MIN = 16;
-const NZ_MIN = 0.08;
+const NZ_MIN = 0.18;
+const MAX_SLOPE = 0.7;
 
 export interface PackedNormalField {
   nx: Float32Array;
@@ -80,16 +97,32 @@ function gradientsFromNormals(field: PackedNormalField) {
   for (let i = 0; i < count; i++) {
     if (!mask[i]) continue;
     const z = nz[i] < NZ_MIN ? NZ_MIN : nz[i];
-    p[i] = -nx[i] / z;
-    q[i] = -ny[i] / z;
+    p[i] = clampSlope(-nx[i] / z);
+    q[i] = clampSlope(-ny[i] / z);
   }
   return { p, q };
 }
 
-function boxBlur3(src: Float64Array, width: number, height: number) {
+function clampSlope(value: number) {
+  if (value > MAX_SLOPE) return MAX_SLOPE;
+  if (value < -MAX_SLOPE) return -MAX_SLOPE;
+  return value;
+}
+
+function boxBlur3Masked(
+  src: Float64Array,
+  mask: Uint8Array,
+  width: number,
+  height: number,
+) {
   const out = new Float64Array(src.length);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!mask[i]) {
+        out[i] = src[i];
+        continue;
+      }
       let sum = 0;
       let n = 0;
       for (let dy = -1; dy <= 1; dy++) {
@@ -98,14 +131,191 @@ function boxBlur3(src: Float64Array, width: number, height: number) {
         for (let dx = -1; dx <= 1; dx++) {
           const xx = x + dx;
           if (xx < 0 || xx >= width) continue;
-          sum += src[yy * width + xx];
+          const j = yy * width + xx;
+          if (!mask[j]) continue;
+          sum += src[j];
           n++;
         }
       }
-      out[y * width + x] = n ? sum / n : src[y * width + x];
+      out[i] = n ? sum / n : src[i];
     }
   }
   return out;
+}
+
+function extendGradientsHarmonic(
+  p: Float64Array,
+  q: Float64Array,
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  iterations = 48,
+) {
+  for (let iter = 0; iter < iterations; iter++) {
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        if (mask[i]) continue;
+        let pSum = 0;
+        let qSum = 0;
+        let n = 0;
+        if (x > 0) {
+          pSum += p[i - 1];
+          qSum += q[i - 1];
+          n++;
+        }
+        if (x < width - 1) {
+          pSum += p[i + 1];
+          qSum += q[i + 1];
+          n++;
+        }
+        if (y > 0) {
+          pSum += p[i - width];
+          qSum += q[i - width];
+          n++;
+        }
+        if (y < height - 1) {
+          pSum += p[i + width];
+          qSum += q[i + width];
+          n++;
+        }
+        if (!n) continue;
+        p[i] = pSum / n;
+        q[i] = qSum / n;
+      }
+    }
+  }
+}
+
+function reflectIndex(i: number, n: number) {
+  if (n <= 1) return 0;
+  const period = n * 2;
+  let k = i % period;
+  if (k < 0) k += period;
+  return k < n ? k : period - 1 - k;
+}
+
+function recenterMasked(heightField: Float32Array, field: PackedNormalField) {
+  const { mask } = field;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < heightField.length; i++) {
+    if (!mask[i]) continue;
+    sum += heightField[i];
+    n++;
+  }
+  if (!n) return;
+  const mean = sum / n;
+  for (let i = 0; i < heightField.length; i++) {
+    if (mask[i]) heightField[i] -= mean;
+  }
+}
+
+function solveLinearSystem(matrix: number[][], rhs: number[]) {
+  const n = rhs.length;
+  const a = matrix.map((row, i) => [...row, rhs[i]]);
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(a[r][col]) > Math.abs(a[pivot][col])) pivot = r;
+    }
+    if (Math.abs(a[pivot][col]) < 1e-12) return null;
+    const swap = a[col];
+    a[col] = a[pivot];
+    a[pivot] = swap;
+    const div = a[col][col];
+    for (let c = col; c <= n; c++) a[col][c] /= div;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = a[r][col];
+      for (let c = col; c <= n; c++) a[r][c] -= f * a[col][c];
+    }
+  }
+  return a.map((row) => row[n]);
+}
+
+function quadraticTerms(x: number, y: number) {
+  return [1, x, y, x * x, x * y, y * y];
+}
+
+function fitQuadratic(heightField: Float32Array, field: PackedNormalField, keep: Uint8Array) {
+  const { width, height } = field;
+  const scale = 1 / Math.max(width, height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const ata = Array.from({ length: 6 }, () => new Array(6).fill(0));
+  const atb = new Array(6).fill(0);
+  let n = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!keep[i]) continue;
+      const px = (x - cx) * scale;
+      const py = (y - cy) * scale;
+      const t = quadraticTerms(px, py);
+      const z = heightField[i];
+      n++;
+      for (let r = 0; r < 6; r++) {
+        atb[r] += t[r] * z;
+        for (let c = 0; c < 6; c++) ata[r][c] += t[r] * t[c];
+      }
+    }
+  }
+  if (n < 24) return null;
+  return solveLinearSystem(ata, atb);
+}
+
+function evalQuadratic(coeff: number[], x: number, y: number) {
+  const t = quadraticTerms(x, y);
+  return t[0] * coeff[0] + t[1] * coeff[1] + t[2] * coeff[2]
+    + t[3] * coeff[3] + t[4] * coeff[4] + t[5] * coeff[5];
+}
+
+/**
+ * Remove the low-frequency bowl/tilt that photometric integration invents.
+ * Local relief (lettering, flake scars) stays.
+ */
+export function detrendQuadraticHeight(heightField: Float32Array, field: PackedNormalField) {
+  const { mask, width, height } = field;
+  const first = fitQuadratic(heightField, field, mask);
+  if (!first) return false;
+  const scale = 1 / Math.max(width, height);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const residuals: number[] = [];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!mask[i]) continue;
+      residuals.push(heightField[i] - evalQuadratic(first, (x - cx) * scale, (y - cy) * scale));
+    }
+  }
+  const sorted = residuals.slice().sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = Math.max(1e-8, q3 - q1);
+  const keep = new Uint8Array(mask.length);
+  let kept = 0;
+  let r = 0;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!mask[i]) continue;
+      if (Math.abs(residuals[r++]) <= 2.5 * iqr) {
+        keep[i] = 1;
+        kept++;
+      }
+    }
+  }
+  const coeff = kept >= 24 ? (fitQuadratic(heightField, field, keep) ?? first) : first;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!mask[i]) continue;
+      heightField[i] -= evalQuadratic(coeff, (x - cx) * scale, (y - cy) * scale);
+    }
+  }
+  return true;
 }
 
 /**
@@ -126,9 +336,15 @@ export function integrateGradientsFrankotChellappa(
   const qRe = new Float64Array(padCount);
   const qIm = new Float64Array(padCount);
 
-  for (let y = 0; y < height; y++) {
-    pRe.set(p.subarray(y * width, y * width + width), y * padW);
-    qRe.set(q.subarray(y * width, y * width + width), y * padW);
+  for (let y = 0; y < padH; y++) {
+    const sy = reflectIndex(y, height);
+    for (let x = 0; x < padW; x++) {
+      const sx = reflectIndex(x, width);
+      const src = sy * width + sx;
+      const dst = y * padW + x;
+      pRe[dst] = p[src];
+      qRe[dst] = q[src];
+    }
   }
 
   fft2d(pRe, pIm, padW, padH, false);
@@ -167,13 +383,145 @@ export function integrateGradientsFrankotChellappa(
   return heightField;
 }
 
-export function integrateNormalsToHeight(field: PackedNormalField) {
+export function applyDisplayMask(
+  field: PackedNormalField,
+  displayMask: Uint8Array | null | undefined,
+  maskSize?: { width: number; height: number } | null,
+) {
+  if (!displayMask) return field;
+  let mask = displayMask;
+  if (mask.length !== field.mask.length) {
+    const mw = maskSize?.width;
+    const mh = maskSize?.height;
+    if (!mw || !mh || mw * mh !== displayMask.length) {
+      throw new Error('Mask size does not match captured image');
+    }
+    mask = resizeMask(displayMask, mw, mh, field.width, field.height);
+  }
+  const glMask = flipMaskY(mask, field.width, field.height);
+  for (let i = 0; i < field.mask.length; i++) {
+    if (!glMask[i]) field.mask[i] = 0;
+  }
+  return field;
+}
+
+export function cropPackedField(
+  field: PackedNormalField,
+  colorPixels: Uint8Array | Uint8ClampedArray | null,
+  pad = 4,
+): { field: PackedNormalField; colorPixels: Uint8Array | Uint8ClampedArray | null } {
+  const { width, height, mask } = field;
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (!mask[y * width + x]) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < minX) return { field, colorPixels };
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(width - 1, maxX + pad);
+  maxY = Math.min(height - 1, maxY + pad);
+  const cropW = maxX - minX + 1;
+  const cropH = maxY - minY + 1;
+  if (cropW === width && cropH === height) return { field, colorPixels };
+
+  const count = cropW * cropH;
+  const nx = new Float32Array(count);
+  const ny = new Float32Array(count);
+  const nz = new Float32Array(count);
+  const cropMask = new Uint8Array(count);
+  let cropColor: Uint8Array | null = null;
+  if (colorPixels) cropColor = new Uint8Array(count * 4);
+
+  for (let y = 0; y < cropH; y++) {
+    for (let x = 0; x < cropW; x++) {
+      const src = (minY + y) * width + (minX + x);
+      const dst = y * cropW + x;
+      nx[dst] = field.nx[src];
+      ny[dst] = field.ny[src];
+      nz[dst] = field.nz[src];
+      cropMask[dst] = mask[src];
+      if (cropColor && colorPixels) {
+        const so = src * 4;
+        const doff = dst * 4;
+        cropColor[doff] = colorPixels[so];
+        cropColor[doff + 1] = colorPixels[so + 1];
+        cropColor[doff + 2] = colorPixels[so + 2];
+        cropColor[doff + 3] = colorPixels[so + 3];
+      }
+    }
+  }
+
+  return {
+    field: { nx, ny, nz, mask: cropMask, width: cropW, height: cropH },
+    colorPixels: cropColor,
+  };
+}
+
+export function integrateNormalsToHeight(
+  field: PackedNormalField,
+  options?: { orient?: boolean },
+) {
   const { p, q } = gradientsFromNormals(field);
-  const pSmooth = boxBlur3(p, field.width, field.height);
-  const qSmooth = boxBlur3(q, field.width, field.height);
+  let pSmooth = p;
+  let qSmooth = q;
+  for (let pass = 0; pass < 3; pass++) {
+    pSmooth = boxBlur3Masked(pSmooth, field.mask, field.width, field.height);
+    qSmooth = boxBlur3Masked(qSmooth, field.mask, field.width, field.height);
+  }
+  const iters = Math.min(64, Math.max(24, Math.round(Math.max(field.width, field.height) / 40)));
+  extendGradientsHarmonic(pSmooth, qSmooth, field.mask, field.width, field.height, iters);
   const heightField = integrateGradientsFrankotChellappa(pSmooth, qSmooth, field.width, field.height);
-  orientHeightTowardCamera(heightField, field);
+  recenterMasked(heightField, field);
+  if (options?.orient !== false) orientHeightTowardCamera(heightField, field);
   return heightField;
+}
+
+function median9(values: Float64Array, n: number) {
+  for (let i = 1; i < n; i++) {
+    const cur = values[i];
+    let j = i - 1;
+    while (j >= 0 && values[j] > cur) {
+      values[j + 1] = values[j];
+      j--;
+    }
+    values[j + 1] = cur;
+  }
+  return values[n >> 1];
+}
+
+export function medianFilterHeight(heightField: Float32Array, field: PackedNormalField) {
+  const { mask, width, height } = field;
+  const out = new Float32Array(heightField);
+  const win = new Float64Array(9);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (!mask[i]) continue;
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= height) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx;
+          if (xx < 0 || xx >= width) continue;
+          const j = yy * width + xx;
+          if (!mask[j]) continue;
+          win[n++] = heightField[j];
+        }
+      }
+      if (n >= 3) out[i] = median9(win, n);
+    }
+  }
+  heightField.set(out);
 }
 
 /**
@@ -356,11 +704,13 @@ export function encodeBinaryPly(mesh: SurfaceMesh, comments: string[] = []) {
 
 export function pixelSizeFromCalibration(
   calibration: { pixelsPerUnit: number; unit: string } | null | undefined,
+  downsample = 1,
 ): MeshScale {
+  const scale = downsample > 0 ? downsample : 1;
   if (!calibration || !(calibration.pixelsPerUnit > 0)) {
-    return { pixelSize: 1, unit: 'px' };
+    return { pixelSize: scale, unit: 'px' };
   }
-  return { pixelSize: 1 / calibration.pixelsPerUnit, unit: calibration.unit };
+  return { pixelSize: (1 / calibration.pixelsPerUnit) * scale, unit: calibration.unit };
 }
 
 export interface ReconstructedSurface {
@@ -371,7 +721,7 @@ export interface ReconstructedSurface {
 
 export function plyCommentsForScale(scale: MeshScale) {
   return [
-    'modernRtiViewer RTI normal integration (Frankot-Chellappa)',
+    'modernRtiViewer RTI normal integration (visualization only)',
     `unit ${scale.unit}`,
     `pixelSize ${scale.pixelSize}`,
     'one-sided surface; not a closed 3D scan',
@@ -384,10 +734,22 @@ export function buildSurfaceFromPackedNormals(
   width: number,
   height: number,
   scale: MeshScale,
+  options?: { mask?: Uint8Array | null; maskWidth?: number; maskHeight?: number },
 ): ReconstructedSurface {
-  const field = normalsFromPackedRgba(normalPixels, width, height);
-  const heightField = integrateNormalsToHeight(field);
-  const mesh = heightFieldToMesh(heightField, field, colorPixels, scale);
+  const field = applyDisplayMask(
+    normalsFromPackedRgba(normalPixels, width, height),
+    options?.mask ?? null,
+    options?.maskWidth && options?.maskHeight
+      ? { width: options.maskWidth, height: options.maskHeight }
+      : null,
+  );
+  const cropped = cropPackedField(field, colorPixels);
+  const heightField = integrateNormalsToHeight(cropped.field, { orient: false });
+  detrendQuadraticHeight(heightField, cropped.field);
+  medianFilterHeight(heightField, cropped.field);
+  recenterMasked(heightField, cropped.field);
+  orientHeightTowardCamera(heightField, cropped.field);
+  const mesh = heightFieldToMesh(heightField, cropped.field, cropped.colorPixels, scale);
   return {
     mesh,
     ply: encodeBinaryPly(mesh, plyCommentsForScale(scale)),
@@ -401,6 +763,7 @@ export function buildPlyFromPackedNormals(
   width: number,
   height: number,
   scale: MeshScale,
+  options?: { mask?: Uint8Array | null; maskWidth?: number; maskHeight?: number },
 ) {
-  return buildSurfaceFromPackedNormals(normalPixels, colorPixels, width, height, scale).ply;
+  return buildSurfaceFromPackedNormals(normalPixels, colorPixels, width, height, scale, options).ply;
 }

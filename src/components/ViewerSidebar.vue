@@ -126,7 +126,7 @@
         </button>
       </SidebarTooltip>
 
-      <SidebarTooltip v-if="featureOn('enhancements')" title="Enhancements" description="Diffuse gain, unsharp, specular (E)">
+      <SidebarTooltip v-if="featureOn('enhancements')" title="Enhancements" description="Exposure, diffuse gain, unsharp, specular (E)">
         <button aria-label="Enhancements" :aria-pressed="enhancementsOpen" @click="emit('toggle-enhancements')" :class="['p-3 rounded-xl transition-all mb-2', enhancementsOpen ? 'bg-violet-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <SlidersHorizontalIcon class="w-5 h-5" />
         </button>

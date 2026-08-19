@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { fft2d, fftRadix2, nextPow2 } from '@/lib/fft2d.js';
 import {
   buildPlyFromPackedNormals,
+  buildSurfaceFromPackedNormals,
+  detrendQuadraticHeight,
   encodeBinaryPly,
   heightFieldToMesh,
   integrateGradientsFrankotChellappa,
   integrateNormalsToHeight,
+  meshResolutionChoices,
   normalsFromPackedRgba,
   pixelSizeFromCalibration,
 } from '@/lib/surfaceFromNormals.js';
@@ -163,6 +166,25 @@ describe('surfaceFromNormals', () => {
     expect(center).toBeGreaterThan(rim);
   });
 
+  it('keeps height bounded when a packed normal is nearly grazing', () => {
+    const width = 24;
+    const height = 24;
+    const pixels = new Uint8Array(width * height * 4);
+    const flat = packNormal(0, 0, 1);
+    const spike = packNormal(0.98, 0, 0.04);
+    for (let i = 0; i < width * height; i++) pixels.set(flat, i * 4);
+    pixels.set(spike, (12 * width + 12) * 4);
+    const field = normalsFromPackedRgba(pixels, width, height);
+    const z = integrateNormalsToHeight(field);
+    let min = Infinity;
+    let max = -Infinity;
+    for (const value of z) {
+      min = Math.min(min, value);
+      max = Math.max(max, value);
+    }
+    expect(max - min).toBeLessThan(12);
+  });
+
   it('builds a colored PLY from packed normals', () => {
     const width = 8;
     const height = 8;
@@ -180,7 +202,7 @@ describe('surfaceFromNormals', () => {
       height,
       { pixelSize: 0.1, unit: 'mm' },
     );
-    const text = new TextDecoder().decode(buffer.slice(0, 400));
+    const text = new TextDecoder().decode(buffer.slice(0, 600));
     expect(text.startsWith('ply\n')).toBe(true);
     expect(text).toContain('format binary_little_endian 1.0');
     expect(text).toContain('comment unit mm');
@@ -189,10 +211,60 @@ describe('surfaceFromNormals', () => {
     expect(text).toContain('end_header');
   });
 
+  it('subtracts a bowl-shaped trend but keeps a local bump', () => {
+    const width = 48;
+    const height = 48;
+    const field = normalsFromPackedRgba(new Uint8Array(width * height * 4).fill(255), width, height);
+    const z = new Float32Array(width * height);
+    const cx = (width - 1) / 2;
+    const cy = (height - 1) / 2;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const nx = (x - cx) / width;
+        const ny = (y - cy) / height;
+        const bowl = 8 * nx * nx + 6 * ny * ny + 3 * nx + 2 * ny;
+        const bump = Math.exp(-((x - cx) ** 2 + (y - 16) ** 2) / 18);
+        z[y * width + x] = bowl + bump;
+      }
+    }
+    detrendQuadraticHeight(z, field);
+    const center = z[16 * width + Math.round(cx)];
+    const corner = z[2 * width + 2];
+    expect(center).toBeGreaterThan(0.4);
+    expect(Math.abs(corner)).toBeLessThan(0.25);
+  });
+
+  it('flattens a globally tilted photometric plane', () => {
+    const width = 32;
+    const height = 32;
+    const normalPixels = new Uint8Array(width * height * 4);
+    const packed = packNormal(0.35, -0.2, 0.9);
+    for (let i = 0; i < width * height; i++) normalPixels.set(packed, i * 4);
+    const surface = buildSurfaceFromPackedNormals(
+      normalPixels,
+      null,
+      width,
+      height,
+      { pixelSize: 1, unit: 'px' },
+    );
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (let i = 0; i < surface.mesh.vertexCount; i++) {
+      const z = surface.mesh.positions[i * 3 + 2];
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    expect(maxZ - minZ).toBeLessThan(1.5);
+  });
+
   it('uses pixel units when no calibration is set', () => {
     expect(pixelSizeFromCalibration(null)).toEqual({ pixelSize: 1, unit: 'px' });
     expect(pixelSizeFromCalibration({ pixelsPerUnit: 20, unit: 'mm' })).toEqual({
       pixelSize: 0.05,
+      unit: 'mm',
+    });
+    expect(pixelSizeFromCalibration({ pixelsPerUnit: 20, unit: 'mm' }, 2)).toEqual({
+      pixelSize: 0.1,
       unit: 'mm',
     });
   });
@@ -216,6 +288,14 @@ describe('surfaceFromNormals', () => {
     expect(header).toContain('element vertex 3');
     expect(header).toContain('element face 1');
     expect(header).toContain('comment test');
+  });
+
+  it('offers native max resolution without presets above the source', () => {
+    expect(meshResolutionChoices(1800)).toEqual([1024, 1800]);
+    expect(meshResolutionChoices(4096)).toEqual([1024, 2048, 4096]);
+    expect(meshResolutionChoices(6120)).toEqual([1024, 2048, 4096, 6120]);
+    expect(meshResolutionChoices(800)).toEqual([800]);
+    expect(meshResolutionChoices(20000)).toEqual([1024, 2048, 4096, 8192]);
   });
 });
 

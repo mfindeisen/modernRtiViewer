@@ -11,6 +11,7 @@ import { createMeshUniformSync } from '../lib/meshUniforms.js';
 import { createTileMeshLoader } from '../lib/tileMeshLoader.js';
 import { clampExportSize, pixelsToPngDataUrl, recordCanvasWebm } from '../lib/exportView.js';
 import { createLineDrawingPass } from '../lib/lineDrawingPass.js';
+import { renderPublicationStrokes } from '../lib/strokeDrawing.js';
 import { FRONT_LIGHT } from '../lib/lightDirection.js';
 import {
   PACKED_NORMAL_RENDER_MODE,
@@ -20,8 +21,9 @@ import {
 } from '../lib/rtiEnhancements.js';
 import {
   MAX_MESH_DIMENSION,
+  MESH_MASK_DIMENSION,
+  DEFAULT_MESH_RESOLUTION,
   buildSurfaceFromPackedNormals,
-  pixelSizeFromCalibration,
   type MeshScale,
   type ReconstructedSurface,
 } from '../lib/surfaceFromNormals.js';
@@ -40,12 +42,16 @@ export function useRtiRenderer({
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
   lightDir2,
   colorGainVector,
   ridgeThreshold,
   valleyThreshold,
   lineWidth,
+  lineOutline,
+  lineHatch,
+  lineDrawingStyle,
   getPanEnabled,
   onResize,
   onFrame,
@@ -81,8 +87,8 @@ export function useRtiRenderer({
     renderMode,
     specularExponent,
     colorGainVector,
-    enhancements: (diffuseGain && unsharpAmount && specularIntensity && lightDir2 && dualLinked)
-      ? { diffuseGain, unsharpAmount, specularIntensity, lightDir2, dualLinked }
+    enhancements: (diffuseGain && unsharpAmount && exposure && specularIntensity && lightDir2 && dualLinked)
+      ? { diffuseGain, unsharpAmount, exposure, specularIntensity, lightDir2, dualLinked }
       : undefined,
   });
 
@@ -481,6 +487,9 @@ export function useRtiRenderer({
       ridgeThreshold: ridgeThreshold?.value ?? 0.14,
       valleyThreshold: valleyThreshold?.value ?? 0.1,
       lineWidth: lineWidth?.value ?? 1.5,
+      outline: lineOutline?.value ?? 0.65,
+      hatch: lineHatch?.value ?? 0.4,
+      style: lineDrawingStyle?.value ?? 'contour',
     };
   }
 
@@ -488,6 +497,7 @@ export function useRtiRenderer({
     cam: THREE.Camera,
     outputTarget: THREE.WebGLRenderTarget | null = null,
     size?: { width: number; height: number },
+    packFields = false,
   ) {
     if (!renderer.value || !scene.value) return;
     const restoreMode = renderMode.value;
@@ -499,12 +509,13 @@ export function useRtiRenderer({
       outputTarget,
       width: size?.width,
       height: size?.height,
+      packFields,
     });
   }
 
   function drawFrame(
     cam: THREE.Camera,
-    options?: { lineDrawing?: boolean; skipLineDrawing?: boolean; outputTarget?: THREE.WebGLRenderTarget | null; width?: number; height?: number },
+    options?: { lineDrawing?: boolean; skipLineDrawing?: boolean; packFields?: boolean; outputTarget?: THREE.WebGLRenderTarget | null; width?: number; height?: number },
   ) {
     if (!renderer.value || !scene.value) return;
     const useDrawing = !options?.skipLineDrawing
@@ -516,6 +527,7 @@ export function useRtiRenderer({
         options?.width != null && options?.height != null
           ? { width: options.width, height: options.height }
           : undefined,
+        options?.packFields,
       );
       return;
     }
@@ -551,11 +563,17 @@ export function useRtiRenderer({
     return { r: pixel[0] / 255, g: pixel[1] / 255, b: pixel[2] / 255 };
   }
 
-  async function waitForTiles(timeoutMs = 20000) {
+  async function waitForTiles(
+    timeoutMs = 20000,
+    onTick?: (remaining: number, total: number) => void,
+  ) {
     const started = Date.now();
     requestRender();
+    const total = Math.max(loadingTileIds.size, 1);
+    onTick?.(loadingTileIds.size, total);
     while (Date.now() - started < timeoutMs) {
       pendingTileCount.value = loadingTileIds.size;
+      onTick?.(loadingTileIds.size, total);
       if (loadingTileIds.size === 0) {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
         if (loadingTileIds.size === 0) return;
@@ -573,6 +591,8 @@ export function useRtiRenderer({
     clearAlpha?: number;
     rawColor?: boolean;
     lineDrawing?: boolean;
+    packFields?: boolean;
+    onTileProgress?: (remaining: number, total: number) => void;
   }) {
     if (!renderer.value || !scene.value || !camera.value || !rtiInfo.value) return null;
     const rti = rtiInfo.value;
@@ -591,7 +611,7 @@ export function useRtiRenderer({
     tileCameraOverride = exportCam;
     tileScreenHeightOverride = height;
     updateTiles();
-    await waitForTiles();
+    await waitForTiles(20000, options?.onTileProgress);
     updateTiles();
 
     const savedLight = lightDir.value.clone();
@@ -609,12 +629,13 @@ export function useRtiRenderer({
         forEachMeshUniform((uniforms) => {
           if (uniforms.uDiffuseGain) uniforms.uDiffuseGain.value = 1;
           if (uniforms.uUnsharpAmount) uniforms.uUnsharpAmount.value = 0;
+          if (uniforms.uExposure) uniforms.uExposure.value = 1;
           if (uniforms.uSpecularIntensity) uniforms.uSpecularIntensity.value = 0;
         });
       }
       renderer.value.setClearColor(0x000000, options?.clearAlpha ?? 1);
 
-      const target = new THREE.WebGLRenderTarget(width, height, options?.rawColor
+      const target = new THREE.WebGLRenderTarget(width, height, options?.rawColor || options?.packFields
         ? { colorSpace: THREE.NoColorSpace }
         : undefined);
       const useDrawing = !!options?.lineDrawing
@@ -622,6 +643,7 @@ export function useRtiRenderer({
       if (useDrawing) {
         drawFrame(exportCam, {
           lineDrawing: true,
+          packFields: options?.packFields,
           outputTarget: target,
           width,
           height,
@@ -647,40 +669,115 @@ export function useRtiRenderer({
     }
   }
 
-  async function exportFullResolution(options?: { lineDrawing?: boolean }) {
+  async function exportFullResolution(options?: { lineDrawing?: boolean; publicationStrokes?: boolean }) {
+    if (options?.publicationStrokes) {
+      const captured = await captureFullResolutionPixels({
+        lineDrawing: true,
+        packFields: true,
+        rawColor: true,
+      });
+      if (!captured) return null;
+      const strokes = renderPublicationStrokes(captured.pixels, captured.width, captured.height, {
+        lineWidth: lineWidth?.value ?? 1.5,
+        flipY: true,
+      });
+      return pixelsToPngDataUrl(strokes, captured.width, captured.height, false);
+    }
     const captured = await captureFullResolutionPixels({ lineDrawing: options?.lineDrawing });
     if (!captured) return null;
     return pixelsToPngDataUrl(captured.pixels, captured.width, captured.height, true);
   }
 
-  async function reconstructSurface(scale?: MeshScale | null): Promise<ReconstructedSurface> {
-    if (!supportsMeshExport(rtiInfo.value?.type)) {
-      throw new Error('3D export needs PTM, HSH or Neural RTI data');
-    }
-    const normals = await captureFullResolutionPixels({
-      maxDim: MAX_MESH_DIMENSION,
-      renderMode: PACKED_NORMAL_RENDER_MODE,
-      light: FRONT_LIGHT,
-      neutralizeLook: true,
-      clearAlpha: 0,
-      rawColor: true,
-    });
-    if (!normals) throw new Error('Could not capture RTI normals');
-    const color = await captureFullResolutionPixels({
-      maxDim: MAX_MESH_DIMENSION,
+  async function captureMeshColor() {
+    return captureFullResolutionPixels({
+      maxDim: MESH_MASK_DIMENSION,
       renderMode: 0,
       light: FRONT_LIGHT,
       neutralizeLook: true,
       clearAlpha: 0,
     });
-    const meshScale = scale ?? pixelSizeFromCalibration(null);
-    return buildSurfaceFromPackedNormals(
+  }
+
+  async function reconstructSurface(
+    scale?: MeshScale | null,
+    options?: {
+      mask?: Uint8Array | null;
+      color?: { pixels: Uint8Array; width: number; height: number } | null;
+      maxDim?: number;
+      onProgress?: (progress: { percent: number; label: string }) => void;
+    },
+  ): Promise<ReconstructedSurface> {
+    if (!supportsMeshExport(rtiInfo.value?.type)) {
+      throw new Error('3D export needs PTM, HSH or Neural RTI data');
+    }
+    const sourceMax = rtiInfo.value
+      ? Math.max(rtiInfo.value.width, rtiInfo.value.height)
+      : DEFAULT_MESH_RESOLUTION;
+    const gl = renderer.value?.getContext();
+    const gpuMax = gl
+      ? Math.max(2048, Math.min(
+        Number(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) || 8192,
+        Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 8192,
+      ))
+      : MAX_MESH_DIMENSION;
+    const requested = Math.max(512, Math.round(options?.maxDim ?? DEFAULT_MESH_RESOLUTION));
+    const maxDim = Math.min(requested, sourceMax, gpuMax, MAX_MESH_DIMENSION);
+    const report = (percent: number, label: string) => {
+      options?.onProgress?.({ percent: Math.max(0, Math.min(100, Math.round(percent))), label });
+    };
+    const yieldUi = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+    report(4, 'Preparing high-resolution view…');
+    await yieldUi();
+    const normals = await captureFullResolutionPixels({
+      maxDim,
+      renderMode: PACKED_NORMAL_RENDER_MODE,
+      light: FRONT_LIGHT,
+      neutralizeLook: true,
+      clearAlpha: 0,
+      rawColor: true,
+      onTileProgress: (remaining, total) => {
+        const done = total <= 0 ? 1 : 1 - remaining / total;
+        report(6 + done * 36, 'Loading tiles for normals…');
+      },
+    });
+    if (!normals) throw new Error('Could not capture RTI normals');
+    report(46, 'Captured normals');
+    await yieldUi();
+
+    report(50, 'Loading tiles for colour…');
+    const color = await captureFullResolutionPixels({
+      maxDim,
+      renderMode: 0,
+      light: FRONT_LIGHT,
+      neutralizeLook: true,
+      clearAlpha: 0,
+      onTileProgress: (remaining, total) => {
+        const done = total <= 0 ? 1 : 1 - remaining / total;
+        report(48 + done * 32, 'Loading tiles for colour…');
+      },
+    });
+    report(84, 'Integrating surface…');
+    await yieldUi();
+
+    const maskPreview = options?.color;
+    const base = scale ?? { pixelSize: 1, unit: 'px' };
+    const downsample = rtiInfo.value ? rtiInfo.value.width / normals.width : 1;
+    const meshScale = { pixelSize: base.pixelSize * downsample, unit: base.unit };
+    const surface = buildSurfaceFromPackedNormals(
       normals.pixels,
       color?.pixels ?? null,
       normals.width,
       normals.height,
       meshScale,
+      {
+        mask: options?.mask ?? null,
+        maskWidth: maskPreview?.width,
+        maskHeight: maskPreview?.height,
+      },
     );
+    report(100, 'Done');
+    return surface;
   }
 
   function recordOrbitVideo(durationMs: number, onTick: (elapsedMs: number) => void) {
@@ -743,6 +840,9 @@ export function useRtiRenderer({
     if (urlView.unsharpAmount !== undefined && unsharpAmount) {
       unsharpAmount.value = urlView.unsharpAmount;
     }
+    if (urlView.exposure !== undefined && exposure) {
+      exposure.value = urlView.exposure;
+    }
     if (urlView.dualLinked !== undefined && dualLinked) {
       dualLinked.value = urlView.dualLinked;
     }
@@ -786,6 +886,7 @@ export function useRtiRenderer({
     exportPng,
     exportFullResolution,
     reconstructSurface,
+    captureMeshColor,
     recordOrbitVideo,
     sampleColorAtScreen,
     readPixelAtScreen,

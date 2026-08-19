@@ -22,6 +22,7 @@ export const ImageShaderMaterial = (
     uColorGain: { value: colorGain?.clone?.() ?? new THREE.Vector3(1, 1, 1) },
     uDiffuseGain: { value: 1.0 },
     uUnsharpAmount: { value: 0.0 },
+    uExposure: { value: 1.0 },
   },
   vertexShader: RTI_VERTEX_SHADER,
   fragmentShader: IMAGE_FRAGMENT,

@@ -55,6 +55,7 @@ export interface RtiViewState {
   specularIntensity?: number;
   diffuseGain?: number;
   unsharpAmount?: number;
+  exposure?: number;
   dualLinked?: boolean;
   colorGain?: ColorGain;
   camera?: RtiCameraState;
@@ -68,6 +69,7 @@ export interface ParsedViewHash {
   specularIntensity?: number;
   diffuseGain?: number;
   unsharpAmount?: number;
+  exposure?: number;
   dualLinked?: boolean;
   colorGain?: ColorGain;
   camera?: RtiCameraState;

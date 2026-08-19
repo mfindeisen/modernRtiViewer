@@ -23,6 +23,7 @@ describe('shaderChunks', () => {
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applyPhotometricGain');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applyUnsharpMask');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('applySpecularBlinn');
+    expect(RTI_FRAGMENT_PREAMBLE).toContain('uExposure');
     expect(RTI_FRAGMENT_PREAMBLE).not.toContain('applySpecularBoost');
     expect(RTI_FRAGMENT_PREAMBLE).toContain('dualLightDir');
   });
@@ -39,6 +40,7 @@ describe('shaderChunks', () => {
     expect(shader).not.toContain('uRenderMode');
     expect(shader).toContain('applyColorGain');
     expect(shader).toContain('dFdx');
+    expect(shader).toContain('uExposure');
   });
 
   it('includes RGB PTM coefficient sampling in the shader library', async () => {

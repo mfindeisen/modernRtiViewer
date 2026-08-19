@@ -56,6 +56,7 @@
       @video="runExport('video')"
       @mesh="runExport('mesh')"
       @drawing="runExport('drawing')"
+      @publication-drawing="runExport('publication-drawing')"
     />
     <ViewerShareModal
       :open="showShareModal"
@@ -64,11 +65,25 @@
       @close="showShareModal = false"
       @copy="executeCopyLink"
     />
+    <ViewerMeshMask
+      :open="showMeshMask"
+      :source="meshColorCapture"
+      :source-max-dim="meshSourceMaxDim"
+      :initial-mask="meshUserMask"
+      :busy="meshMaskBusy"
+      :busy-label="meshMaskStatus"
+      :progress="meshMaskPercent"
+      :error="meshMaskBusy ? '' : meshMaskStatus"
+      @close="closeMeshMask"
+      @generate="generateMaskedMesh"
+    />
     <ViewerMeshPreview
       :open="showMeshPreview"
       :surface="meshPreview"
+      :can-remask="!!meshColorCapture"
       @close="closeMeshPreview"
       @download="downloadMeshPly"
+      @remask="reopenMeshMask"
     />
 
     <div class="flex-1 relative overflow-hidden rounded-b-xl lg:rounded-r-xl lg:rounded-bl-none" ref="containerWrapper" @pointermove="onProbeMove">
@@ -141,24 +156,33 @@
         :loading="loading"
         :diffuse-gain="diffuseGain"
         :unsharp-amount="unsharpAmount"
+        :exposure="exposure"
         :specular-exponent="specularExponent"
         :specular-intensity="specularIntensity"
+        :glossy-mode="renderMode === 1"
         :dual-mode="renderMode === 4"
         :dual-linked="dualLinked"
         :line-drawing-mode="renderMode === 5"
         :ridge-threshold="ridgeThreshold"
         :valley-threshold="valleyThreshold"
         :line-width="lineWidth"
+        :line-outline="lineOutline"
+        :line-hatch="lineHatch"
+        :line-drawing-style="lineDrawingStyle"
         :stack-below-white-balance="(currentMode === 'whitebalance' || whiteBalanceActive) && !loading"
         @update:diffuse-gain="onDiffuseGainChange"
         @update:unsharp-amount="onUnsharpAmountChange"
+        @update:exposure="onExposureChange"
         @update:specular-exponent="onSpecularExponentChange"
         @update:specular-intensity="onSpecularIntensityChange"
         @update:ridge-threshold="onRidgeThresholdChange"
         @update:valley-threshold="onValleyThresholdChange"
         @update:line-width="onLineWidthChange"
+        @update:line-outline="onLineOutlineChange"
+        @update:line-hatch="onLineHatchChange"
+        @update:line-drawing-style="onLineDrawingStyleChange"
         @update:dual-linked="setDualLinked"
-        @reset="resetShading"
+        @reset="resetEnhancementPanel"
       />
 
       <ViewerScalePanel
@@ -215,6 +239,7 @@ import ViewerSidebar from './ViewerSidebar.vue';
 import ViewerInfoModal from './ViewerInfoModal.vue';
 import ViewerShareModal from './ViewerShareModal.vue';
 import ViewerMeshPreview from './ViewerMeshPreview.vue';
+import ViewerMeshMask from './ViewerMeshMask.vue';
 import ViewerWhiteBalancePanel from './ViewerWhiteBalancePanel.vue';
 import ViewerEnhancementsPanel from './ViewerEnhancementsPanel.vue';
 import ViewerExportModal from './ViewerExportModal.vue';
@@ -293,20 +318,29 @@ const {
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
   ridgeThreshold,
   valleyThreshold,
   lineWidth,
+  lineOutline,
+  lineHatch,
+  lineDrawingStyle,
   setRenderMode,
   onSpecularExponentChange,
   onSpecularIntensityChange,
   onDiffuseGainChange,
   onUnsharpAmountChange,
+  onExposureChange,
   onRidgeThresholdChange,
   onValleyThresholdChange,
   onLineWidthChange,
+  onLineOutlineChange,
+  onLineHatchChange,
+  onLineDrawingStyleChange,
   setDualLinked,
   resetShading,
+  resetEnhancementPanel,
   overlayShapes,
   overlaySize,
   overlayComponentRef,
@@ -357,7 +391,17 @@ const {
   drawingExportAvailable,
   showMeshPreview,
   meshPreview,
+  meshSourceMaxDim,
+  showMeshMask,
+  meshColorCapture,
+  meshUserMask,
+  meshMaskBusy,
+  meshMaskStatus,
+  meshMaskPercent,
+  closeMeshMask,
   closeMeshPreview,
+  reopenMeshMask,
+  generateMaskedMesh,
   downloadMeshPly,
   runExport,
   lightAnimation,

@@ -19,6 +19,7 @@ export const RTI_FRAGMENT_PREAMBLE = `
   uniform float uSpecularExponent;
   uniform float uDiffuseGain;
   uniform float uUnsharpAmount;
+  uniform float uExposure;
   uniform float uSpecularIntensity;
   uniform vec3 uLightDir2;
   uniform float uDualLinked;
@@ -91,7 +92,7 @@ export const RTI_FRAGMENT_PREAMBLE = `
   }
 
   vec3 finishColor(vec3 color) {
-    return applyColorGain(color);
+    return clamp(applyColorGain(color) * uExposure, 0.0, 1.0);
   }
 `;
 
@@ -103,6 +104,7 @@ export const IMAGE_FRAGMENT_PREAMBLE = `
   uniform vec4 uBounds;
   uniform float uDiffuseGain;
   uniform float uUnsharpAmount;
+  uniform float uExposure;
   ${COLOR_CORRECTION_GLSL}
 
   varying vec2 vUv;
@@ -128,7 +130,7 @@ export const IMAGE_FRAGMENT_PREAMBLE = `
   }
 
   vec3 finishColor(vec3 color) {
-    return applyColorGain(applyUnsharp(applyDiffuseGain(color)));
+    return clamp(applyColorGain(applyUnsharp(applyDiffuseGain(color))) * uExposure, 0.0, 1.0);
   }
 `;
 

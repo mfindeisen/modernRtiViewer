@@ -50,6 +50,16 @@
             <ExperimentalBadge v-if="drawingExperimental" />
           </button>
           <button
+            v-if="drawingAvailable"
+            type="button"
+            class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-600"
+            :disabled="busy"
+            @click="emit('publication-drawing')"
+          >
+            Publication drawing PNG
+            <ExperimentalBadge v-if="drawingExperimental" />
+          </button>
+          <button
             v-if="meshAvailable"
             type="button"
             class="flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-700 text-white text-sm font-medium hover:bg-slate-600"
@@ -62,12 +72,12 @@
         </div>
         <p v-if="meshAvailable" class="mt-3 text-xs text-slate-400 leading-relaxed">
           <span v-if="meshExperimental" class="text-amber-300/90">Experimental.</span>
-          Reconstructs a one-sided mesh from RTI normals and opens it in a 3D view. Download PLY for MeshLab or Blender.
+          For visualization only — not scientifically accurate. Reconstructs a one-sided mesh from RTI normals. You mask the object first so the table and colour chart stay out of the integration.
           Set a scale in measure mode if you want millimetres instead of pixels.
         </p>
         <p v-if="drawingAvailable" class="mt-3 text-xs text-slate-400 leading-relaxed">
           <span v-if="drawingExperimental" class="text-amber-300/90">Experimental.</span>
-          Line drawing traces ridges and valleys from the surface normals. Adjust thresholds under Enhancements.
+          Line drawing is the live GPU look. Publication drawing traces those ridges into tapered ink strokes for print. Both use the current Enhancements sliders.
         </p>
         <p v-if="status" class="mt-3 text-xs text-slate-400">{{ status }}</p>
       </div>
@@ -91,5 +101,5 @@ defineProps({
   meshExperimental: { type: Boolean, default: true },
 });
 
-const emit = defineEmits(['close', 'snapshot', 'full-res', 'clipboard', 'video', 'mesh', 'drawing', 'update:includeAnnotations']);
+const emit = defineEmits(['close', 'snapshot', 'full-res', 'clipboard', 'video', 'mesh', 'drawing', 'publication-drawing', 'update:includeAnnotations']);
 </script>

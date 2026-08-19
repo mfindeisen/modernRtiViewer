@@ -55,6 +55,7 @@ export function useAnnotations({
   const annotationStrokeWidth = ref(loadAnnotationStrokeWidth());
   const shapeMenuOpen = ref(false);
   const selectedAnnotationId = ref<string | null>(null);
+  const overlaysVisible = ref(true);
 
   let drawingAnnotation = false;
   let annotateStartNorm: { x: number; y: number } | null = null;
@@ -122,7 +123,7 @@ export function useAnnotations({
   }
 
   function updateOverlayShapes() {
-    if (!enabled() || !renderer.value || !quadtree.value || !camera.value) {
+    if (!renderer.value || !quadtree.value || !camera.value) {
       overlayShapes.value = [];
       return;
     }
@@ -135,12 +136,21 @@ export function useAnnotations({
       return;
     }
     overlayShapes.value = buildOverlayShapes(
-      displayedAnnotations.value,
+      overlaysVisible.value ? displayedAnnotations.value : [],
       draftAnnotation.value,
       annotationColor.value,
       project,
       annotationStrokeWidth.value,
     );
+  }
+
+  function setOverlaysVisible(visible: boolean) {
+    overlaysVisible.value = visible;
+    updateOverlayShapes();
+  }
+
+  function toggleOverlaysVisible() {
+    setOverlaysVisible(!overlaysVisible.value);
   }
 
   function setAnnotations(list: Annotation[]) {
@@ -165,6 +175,8 @@ export function useAnnotations({
   }
 
   function toggleAnnotateMode(setMode: (mode: 'annotate') => void) {
+    if (!enabled()) return;
+    if (!overlaysVisible.value) setOverlaysVisible(true);
     if (currentMode.value === 'annotate') {
       shapeMenuOpen.value = !shapeMenuOpen.value;
       return;
@@ -431,11 +443,14 @@ export function useAnnotations({
     annotationStrokeWidth,
     shapeMenuOpen,
     selectedAnnotationId,
+    overlaysVisible,
     activeShapeOption,
     syncOverlaySize,
     updateOverlayShapes,
     setAnnotations,
     selectAnnotation,
+    setOverlaysVisible,
+    toggleOverlaysVisible,
     clearDrawingState,
     toggleAnnotateMode,
     selectAnnotationShape,

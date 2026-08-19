@@ -2,6 +2,7 @@ import type { Ref } from 'vue';
 import type * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { QuadtreeManager } from '../lib/QuadtreeManager.js';
+import type { LineDrawingStyle } from '../lib/rtiEnhancements.js';
 import type {
   Annotation,
   AnnotationCreatePayload,
@@ -88,11 +89,15 @@ export interface UseRtiRendererOptions {
   specularIntensity?: Ref<number>;
   diffuseGain?: Ref<number>;
   unsharpAmount?: Ref<number>;
+  exposure?: Ref<number>;
   dualLinked?: Ref<boolean>;
   lightDir2?: Ref<THREE.Vector3>;
   ridgeThreshold?: Ref<number>;
   valleyThreshold?: Ref<number>;
   lineWidth?: Ref<number>;
+  lineOutline?: Ref<number>;
+  lineHatch?: Ref<number>;
+  lineDrawingStyle?: Ref<LineDrawingStyle>;
   colorGainVector: THREE.Vector3;
   getPanEnabled: () => boolean;
   onResize?: () => void;
@@ -110,6 +115,7 @@ export interface UseViewerChromeOptions {
   specularIntensity?: Ref<number>;
   diffuseGain?: Ref<number>;
   unsharpAmount?: Ref<number>;
+  exposure?: Ref<number>;
   dualLinked?: Ref<boolean>;
   lightDir2?: Ref<THREE.Vector3>;
   colorGain: Ref<ColorGain>;
@@ -131,5 +137,6 @@ export interface UseViewerChromeOptions {
     onSelectAnnotation: (id: string | number | null) => void;
     onExport?: (dataUrl: string | null) => void;
     onSetScale?: (value: unknown) => void;
+    onSetAnnotationOverlaysVisible?: (visible: boolean) => void;
   };
 }

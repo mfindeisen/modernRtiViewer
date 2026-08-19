@@ -15,6 +15,7 @@ import {
   supportsLineDrawing,
   RENDER_MODE_LINE_DRAWING,
   RENDER_MODE_LATENT,
+  RENDER_MODE_GLOSSY,
 } from '../lib/rtiEnhancements.js';
 import { resolveViewerConfig, isFeatureEnabled } from '../lib/viewerConfig.js';
 import { DEFAULT_RENDER_MODE } from './useRenderSettings.js';
@@ -29,7 +30,7 @@ import {
   type MeasureUnit,
   type ScaleCalibration,
 } from '../lib/measureDistance.js';
-import { pixelSizeFromCalibration, type ReconstructedSurface } from '../lib/surfaceFromNormals.js';
+import { DEFAULT_MESH_RESOLUTION, pixelSizeFromCalibration, type ReconstructedSurface } from '../lib/surfaceFromNormals.js';
 import {
   copyPngDataUrl,
   downloadDataUrl,
@@ -72,10 +73,14 @@ export function useRtiViewer({
     specularIntensity,
     diffuseGain,
     unsharpAmount,
+    exposure,
     dualLinked,
     ridgeThreshold,
     valleyThreshold,
     lineWidth,
+    lineOutline,
+    lineHatch,
+    lineDrawingStyle,
     setRenderMode,
     updateSpecular,
     updateEnhancements,
@@ -83,11 +88,16 @@ export function useRtiViewer({
     onSpecularIntensityChange,
     onDiffuseGainChange,
     onUnsharpAmountChange,
+    onExposureChange,
     onRidgeThresholdChange,
     onValleyThresholdChange,
     onLineWidthChange,
+    onLineOutlineChange,
+    onLineHatchChange,
+    onLineDrawingStyleChange,
     setDualLinked,
     resetShading,
+    resetEnhancementPanel,
   } = useRenderSettings(meshUpdaters);
 
   const rendererHooks = {
@@ -107,10 +117,14 @@ export function useRtiViewer({
     specularIntensity,
     diffuseGain,
     unsharpAmount,
+    exposure,
     dualLinked,
     ridgeThreshold,
     valleyThreshold,
     lineWidth,
+    lineOutline,
+    lineHatch,
+    lineDrawingStyle,
     colorGainVector,
     getPanEnabled: () => currentMode.value === 'pan',
     debug: props.debug === 'true',
@@ -135,6 +149,7 @@ export function useRtiViewer({
     exportPng,
     exportFullResolution,
     reconstructSurface,
+    captureMeshColor,
     recordOrbitVideo,
     sampleColorAtScreen,
     readPixelAtScreen,
@@ -257,7 +272,9 @@ export function useRtiViewer({
   function setViewerRenderMode(mode: number) {
     const next = isRenderModeAllowed(mode) ? mode : DEFAULT_RENDER_MODE;
     setRenderMode(next);
-    if (next === 1 || next === RENDER_MODE_LINE_DRAWING) showEnhancements.value = true;
+    if (next === RENDER_MODE_GLOSSY || next === RENDER_MODE_LINE_DRAWING) {
+      showEnhancements.value = true;
+    }
   }
 
   const chrome = useViewerChrome({
@@ -271,6 +288,7 @@ export function useRtiViewer({
     specularIntensity,
     diffuseGain,
     unsharpAmount,
+    exposure,
     dualLinked,
     colorGain,
     camera,
@@ -293,6 +311,9 @@ export function useRtiViewer({
       onSelectAnnotation: annotations.selectAnnotation,
       onExport: (dataUrl) => emit('rti-export', dataUrl),
       onSetScale: applyScale,
+      onSetAnnotationOverlaysVisible: (visible) => {
+        annotations.setOverlaysVisible(visible);
+      },
     },
   });
 
@@ -327,6 +348,12 @@ export function useRtiViewer({
   const exportStatus = ref('');
   const showMeshPreview = ref(false);
   const meshPreview = shallowRef<ReconstructedSurface | null>(null);
+  const showMeshMask = ref(false);
+  const meshColorCapture = shallowRef<{ pixels: Uint8Array; width: number; height: number } | null>(null);
+  const meshUserMask = shallowRef<Uint8Array | null>(null);
+  const meshMaskBusy = ref(false);
+  const meshMaskStatus = ref('');
+  const meshMaskPercent = ref(0);
   const measureStart = ref<{ x: number; y: number } | null>(null);
   const measureEnd = ref<{ x: number; y: number } | null>(null);
   const measureStartScreen = ref<{ x: number; y: number } | null>(null);
@@ -385,10 +412,18 @@ export function useRtiViewer({
     };
   }
 
-  async function exportSnapshot(options?: { fullRes?: boolean; includeAnnotations?: boolean; lineDrawing?: boolean }) {
+  async function exportSnapshot(options?: {
+    fullRes?: boolean;
+    includeAnnotations?: boolean;
+    lineDrawing?: boolean;
+    publicationStrokes?: boolean;
+  }) {
     const include = options?.includeAnnotations ?? exportIncludeAnnotations.value;
-    const dataUrl = (options?.fullRes || options?.lineDrawing)
-      ? await exportFullResolution({ lineDrawing: options?.lineDrawing })
+    const dataUrl = (options?.fullRes || options?.lineDrawing || options?.publicationStrokes)
+      ? await exportFullResolution({
+        lineDrawing: options?.lineDrawing || options?.publicationStrokes,
+        publicationStrokes: options?.publicationStrokes,
+      })
       : exportPng();
     if (!dataUrl) return null;
     if (!include) return dataUrl;
@@ -398,14 +433,16 @@ export function useRtiViewer({
     return compositeDataUrlWithOverlay(dataUrl, overlayShapes.value, overlaySize.value);
   }
 
-  async function runExport(kind: 'snapshot' | 'full-res' | 'clipboard' | 'video' | 'mesh' | 'drawing') {
+  async function runExport(kind: 'snapshot' | 'full-res' | 'clipboard' | 'video' | 'mesh' | 'drawing' | 'publication-drawing') {
     const features = viewerConfig.value.features;
     if (!features.export) return;
-    if (kind === 'drawing' && !features.lineDrawing) return;
+    if ((kind === 'drawing' || kind === 'publication-drawing') && !features.lineDrawing) return;
     if (kind === 'mesh' && !features.meshPreview) return;
     if (kind === 'video' && !features.lightOrbit) return;
     exportBusy.value = true;
-    exportStatus.value = kind === 'full-res' || kind === 'drawing'
+    exportStatus.value = kind === 'publication-drawing'
+      ? 'Tracing ink strokes…'
+      : kind === 'full-res' || kind === 'drawing'
       ? 'Rendering full resolution…'
       : kind === 'mesh'
         ? 'Reconstructing 3D surface…'
@@ -421,16 +458,21 @@ export function useRtiViewer({
         return;
       }
       if (kind === 'mesh') {
-        exportStatus.value = 'Capturing normals and integrating surface…';
-        meshPreview.value = await reconstructSurface(pixelSizeFromCalibration(scaleCalibration.value));
+        exportStatus.value = 'Capturing image for masking…';
+        const color = await captureMeshColor();
+        if (!color) throw new Error('Could not capture image for masking');
+        meshColorCapture.value = color;
+        meshUserMask.value = null;
         showExportModal.value = false;
-        showMeshPreview.value = true;
+        showMeshPreview.value = false;
+        showMeshMask.value = true;
         exportStatus.value = '';
         return;
       }
       const dataUrl = await exportSnapshot({
-        fullRes: kind === 'full-res' || kind === 'drawing',
+        fullRes: kind === 'full-res' || kind === 'drawing' || kind === 'publication-drawing',
         lineDrawing: kind === 'drawing',
+        publicationStrokes: kind === 'publication-drawing',
       });
       if (!dataUrl) {
         exportStatus.value = 'Export failed';
@@ -441,11 +483,17 @@ export function useRtiViewer({
         exportStatus.value = 'Copied to clipboard';
         return;
       }
-      downloadDataUrl(
-        dataUrl,
-        kind === 'drawing' ? `rti_drawing_${Date.now()}.png` : `rti_export_${Date.now()}.png`,
-      );
-      exportStatus.value = kind === 'drawing' ? 'Saved line drawing' : 'Saved PNG';
+      const drawingName = kind === 'publication-drawing'
+        ? `rti_drawing_print_${Date.now()}.png`
+        : kind === 'drawing'
+          ? `rti_drawing_${Date.now()}.png`
+          : `rti_export_${Date.now()}.png`;
+      downloadDataUrl(dataUrl, drawingName);
+      exportStatus.value = kind === 'publication-drawing'
+        ? 'Saved publication drawing'
+        : kind === 'drawing'
+          ? 'Saved line drawing'
+          : 'Saved PNG';
     } catch (err: unknown) {
       exportStatus.value = err instanceof Error ? err.message : 'Export failed';
     } finally {
@@ -579,9 +627,60 @@ export function useRtiViewer({
     updateHud();
   }
 
+  function closeMeshMask() {
+    if (meshMaskBusy.value) return;
+    showMeshMask.value = false;
+    meshColorCapture.value = null;
+    meshUserMask.value = null;
+    meshMaskStatus.value = '';
+    meshMaskPercent.value = 0;
+  }
+
   function closeMeshPreview() {
     showMeshPreview.value = false;
     meshPreview.value = null;
+    meshColorCapture.value = null;
+    meshUserMask.value = null;
+    meshMaskStatus.value = '';
+    meshMaskPercent.value = 0;
+  }
+
+  function reopenMeshMask() {
+    showMeshPreview.value = false;
+    meshPreview.value = null;
+    if (meshColorCapture.value) showMeshMask.value = true;
+  }
+
+  async function generateMaskedMesh(payload: { mask: Uint8Array; maxDim?: number } | Uint8Array) {
+    const mask = payload instanceof Uint8Array ? payload : payload.mask;
+    const maxDim = payload instanceof Uint8Array ? undefined : payload.maxDim;
+    if (meshMaskBusy.value) return;
+    meshMaskBusy.value = true;
+    meshMaskPercent.value = 2;
+    meshMaskStatus.value = 'Starting reconstruction…';
+    meshUserMask.value = mask;
+    try {
+      meshPreview.value = await reconstructSurface(
+        pixelSizeFromCalibration(scaleCalibration.value),
+        {
+          mask,
+          color: meshColorCapture.value,
+          maxDim,
+          onProgress: ({ percent, label }) => {
+            meshMaskPercent.value = percent;
+            meshMaskStatus.value = label;
+          },
+        },
+      );
+      showMeshMask.value = false;
+      showMeshPreview.value = true;
+      meshMaskStatus.value = '';
+      meshMaskPercent.value = 0;
+    } catch (err: unknown) {
+      meshMaskStatus.value = err instanceof Error ? err.message : 'Reconstruction failed';
+    } finally {
+      meshMaskBusy.value = false;
+    }
   }
 
   function downloadMeshPly() {
@@ -593,6 +692,10 @@ export function useRtiViewer({
   function handleEscape() {
     if (showMeshPreview.value) {
       closeMeshPreview();
+      return;
+    }
+    if (showMeshMask.value) {
+      closeMeshMask();
       return;
     }
     if (showShortcuts.value) {
@@ -803,6 +906,9 @@ export function useRtiViewer({
     if (!features.meshPreview) {
       showMeshPreview.value = false;
       meshPreview.value = null;
+      showMeshMask.value = false;
+      meshColorCapture.value = null;
+      meshUserMask.value = null;
     }
     if (!isRenderModeAllowed(renderMode.value)) setViewerRenderMode(DEFAULT_RENDER_MODE);
   }, { deep: true });
@@ -820,20 +926,29 @@ export function useRtiViewer({
     specularIntensity,
     diffuseGain,
     unsharpAmount,
+    exposure,
     dualLinked,
     ridgeThreshold,
     valleyThreshold,
     lineWidth,
+    lineOutline,
+    lineHatch,
+    lineDrawingStyle,
     setRenderMode: setViewerRenderMode,
     onSpecularExponentChange,
     onSpecularIntensityChange,
     onDiffuseGainChange,
     onUnsharpAmountChange,
+    onExposureChange,
     onRidgeThresholdChange,
     onValleyThresholdChange,
     onLineWidthChange,
+    onLineOutlineChange,
+    onLineHatchChange,
+    onLineDrawingStyleChange,
     setDualLinked,
     resetShading,
+    resetEnhancementPanel,
     overlayShapes,
     overlaySize,
     overlayComponentRef,
@@ -889,7 +1004,21 @@ export function useRtiViewer({
     )),
     showMeshPreview,
     meshPreview,
+    meshSourceMaxDim: computed(() => {
+      const info = rtiInfo.value;
+      if (!info) return DEFAULT_MESH_RESOLUTION;
+      return Math.max(info.width, info.height);
+    }),
+    showMeshMask,
+    meshColorCapture,
+    meshUserMask,
+    meshMaskBusy,
+    meshMaskStatus,
+    meshMaskPercent,
+    closeMeshMask,
     closeMeshPreview,
+    reopenMeshMask,
+    generateMaskedMesh,
     downloadMeshPly,
     runExport,
     lightAnimation,

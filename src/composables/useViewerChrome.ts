@@ -16,6 +16,7 @@ export function useViewerChrome({
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
   colorGain,
   camera,
@@ -64,6 +65,7 @@ export function useViewerChrome({
       specularIntensity: specularIntensity?.value,
       diffuseGain: diffuseGain?.value,
       unsharpAmount: unsharpAmount?.value,
+      exposure: exposure?.value,
       dualLinked: dualLinked?.value,
       colorGain: colorGain.value,
       camera: camera.value,
@@ -80,6 +82,7 @@ export function useViewerChrome({
       specularIntensity,
       diffuseGain,
       unsharpAmount,
+      exposure,
       dualLinked,
       colorGain,
       camera,
@@ -125,6 +128,7 @@ export function useViewerChrome({
       specularIntensity: specularIntensity?.value,
       diffuseGain: diffuseGain?.value,
       unsharpAmount: unsharpAmount?.value,
+      exposure: exposure?.value,
       dualLinked: dualLinked?.value,
       colorGain: colorGain.value,
     });
@@ -218,6 +222,8 @@ export function useViewerChrome({
         onViewRestored?.();
       } else if (type === 'set-scale') {
         hostHandlers.onSetScale?.(payload.scale ?? payload);
+      } else if (type === 'set-annotation-overlays-visible') {
+        hostHandlers.onSetAnnotationOverlaysVisible?.(payload.visible !== false);
       } else if (type === 'export') {
         void (async () => {
           if (payload.download === false) {

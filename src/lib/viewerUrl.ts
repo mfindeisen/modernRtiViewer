@@ -54,6 +54,11 @@ export function parseViewHash(hash: string): ParsedViewHash {
     if (!Number.isNaN(us)) result.unsharpAmount = us;
   }
 
+  if (params.has('ex')) {
+    const ex = parseFloat(params.get('ex')!);
+    if (!Number.isNaN(ex)) result.exposure = ex;
+  }
+
   if (params.has('lx2') && params.has('ly2')) {
     const lx2 = parseFloat(params.get('lx2')!);
     const ly2 = parseFloat(params.get('ly2')!);
@@ -98,6 +103,7 @@ export interface BuildShareUrlState {
   specularIntensity?: number;
   diffuseGain?: number;
   unsharpAmount?: number;
+  exposure?: number;
   dualLinked?: boolean;
 }
 
@@ -105,6 +111,7 @@ const DEFAULT_SHARE_SPECULAR = 10;
 const DEFAULT_SHARE_SPECULAR_INTENSITY = 0.8;
 const DEFAULT_SHARE_DIFFUSE_GAIN = 1;
 const DEFAULT_SHARE_UNSHARP = 0;
+const DEFAULT_SHARE_EXPOSURE = 1;
 
 /**
  * Build a shareable URL with hash-encoded viewer state.
@@ -119,6 +126,7 @@ export function buildShareUrl(baseUrl: string, {
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
 }: BuildShareUrlState) {
   const params = new URLSearchParams();
@@ -140,6 +148,9 @@ export function buildShareUrl(baseUrl: string, {
   }
   if (unsharpAmount !== undefined && Math.abs(unsharpAmount - DEFAULT_SHARE_UNSHARP) > 0.01) {
     params.set('us', unsharpAmount.toFixed(2));
+  }
+  if (exposure !== undefined && Math.abs(exposure - DEFAULT_SHARE_EXPOSURE) > 0.01) {
+    params.set('ex', exposure.toFixed(2));
   }
   if (dualLinked === false && lightDir2) {
     params.set('unlink', '1');

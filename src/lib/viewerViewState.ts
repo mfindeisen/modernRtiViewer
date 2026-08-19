@@ -13,6 +13,7 @@ interface CaptureRtiViewInput {
   specularIntensity?: number;
   diffuseGain?: number;
   unsharpAmount?: number;
+  exposure?: number;
   dualLinked?: boolean;
   colorGain: ColorGain;
   camera: THREE.OrthographicCamera | null;
@@ -27,6 +28,7 @@ interface ApplyRtiViewOptions {
   specularIntensity?: Ref<number>;
   diffuseGain?: Ref<number>;
   unsharpAmount?: Ref<number>;
+  exposure?: Ref<number>;
   dualLinked?: Ref<boolean>;
   colorGain: Ref<ColorGain>;
   camera: Ref<THREE.OrthographicCamera | null>;
@@ -50,6 +52,7 @@ export function captureRtiView({
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
   colorGain,
   camera,
@@ -63,6 +66,7 @@ export function captureRtiView({
     specularIntensity,
     diffuseGain,
     unsharpAmount,
+    exposure,
     dualLinked,
     colorGain: { ...colorGain },
     camera: {
@@ -83,6 +87,7 @@ export function applyRtiView(view: RtiViewState | null | undefined, {
   specularIntensity,
   diffuseGain,
   unsharpAmount,
+  exposure,
   dualLinked,
   colorGain,
   camera,
@@ -118,11 +123,14 @@ export function applyRtiView(view: RtiViewState | null | undefined, {
   if (view.unsharpAmount !== undefined && unsharpAmount) {
     unsharpAmount.value = view.unsharpAmount;
   }
+  if (view.exposure !== undefined && exposure) {
+    exposure.value = view.exposure;
+  }
   if (view.dualLinked !== undefined && dualLinked) {
     dualLinked.value = view.dualLinked;
   }
   if (view.specularIntensity !== undefined || view.diffuseGain !== undefined
-    || view.unsharpAmount !== undefined || view.dualLinked !== undefined) {
+    || view.unsharpAmount !== undefined || view.exposure !== undefined || view.dualLinked !== undefined) {
     updateEnhancements?.();
     updateSpecular();
   }

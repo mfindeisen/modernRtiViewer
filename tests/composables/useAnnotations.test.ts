@@ -44,6 +44,17 @@ describe('useAnnotations', () => {
     });
   }
 
+  it('toggles overlay visibility without dropping stored annotations', () => {
+    const { overlaysVisible, toggleOverlaysVisible, displayedAnnotations, setAnnotations } = createAnnotations();
+    setAnnotations([{ id: '1', type: 'point', geometry: { position: [0.2, 0.3] } }]);
+    expect(overlaysVisible.value).toBe(true);
+    toggleOverlaysVisible();
+    expect(overlaysVisible.value).toBe(false);
+    expect(displayedAnnotations.value).toHaveLength(1);
+    toggleOverlaysVisible();
+    expect(overlaysVisible.value).toBe(true);
+  });
+
   it('stores annotations and refreshes overlay state', () => {
     const { setAnnotations, overlayShapes } = createAnnotations();
     setAnnotations([
