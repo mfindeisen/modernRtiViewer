@@ -65,14 +65,17 @@ The viewer provides several interaction modes on the left sidebar:
 
 2. **Light Direction (Lightbulb Icon):**
    - Click and drag on the main canvas to interactively change the lighting angle.
-   - The lighting simulation uses the RTI coefficients (PTM or HSH) to dynamically compute shadows and highlights.
+   - The lighting simulation uses the RTI coefficients (PTM, HSH, or Neural weights) to dynamically compute shadows and highlights.
    - **Compass Widget:** The widget in the bottom left provides a visual reference of the current light position (x, y). You can also drag the dot inside the compass to move the light.
 
 ### Render Modes
 
 You can switch the mathematical rendering mode:
-- **Default Mode:** Computes the standard diffuse reflection based on the encoded RTI coefficients.
-- **Specular Enhancement:** Adds an artificial specular highlight on top of the diffuse lighting to enhance surface details and scratches.
-- **Normals:** Visualizes the surface normal vectors calculated directly from the RTI coefficients, allowing you to see the raw geometric shape without texture color.
+- **Default Mode:** Computes the standard diffuse reflection based on the encoded RTI coefficients or Neural MLP.
+- **Specular Enhancement / Glossy:** Adds an artificial specular highlight (Blinn-Phong) on top of the diffuse lighting to enhance surface details and scratches.
+- **Normals:** Visualizes the surface normal vectors calculated directly from the RTI coefficients, or via finite differences for Neural RTI.
 - **Slope Heatmap:** Computes the steepness of the surface and maps it to a color gradient (blue for flat, red for steep). Extremely useful for highlighting shallow engravings or scratches without adjusting the light.
 - **Dual Light:** Calculates a secondary, opposite light source (raking light). The primary light is tinted red and the opposing light blue. This creates high-contrast shadows that perfectly reveal fine tool marks and edges.
+- **Line Drawing (experimental):** Traces ridges and valleys from photometric normals as black lines on white.
+- **Latent Map (Neural RTI only):** Renders the raw latent RGB from the compressed feature space.
+- **3D Mesh Preview (experimental):** Surface preview derived from photometric normals.

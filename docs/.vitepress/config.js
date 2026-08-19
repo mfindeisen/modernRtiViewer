@@ -5,6 +5,9 @@ export default defineConfig({
   description: "A high-performance Vue 3 & Three.js viewer for Reflectance Transformation Imaging (RTI) data.",
   base: '/docs/',
   outDir: '../dist/docs',
+  markdown: {
+    math: true,
+  },
   themeConfig: {
     nav: [
       { text: 'Home', link: '/' },
@@ -23,13 +26,13 @@ export default defineConfig({
         text: 'Technical Documentation',
         items: [
           { text: 'Architecture & Quadtree', link: '/technical/architecture' },
-          { text: 'Math & Shaders (PTM/HSH)', link: '/technical/math' }
+          { text: 'Math & Shaders (PTM/HSH/Neural)', link: '/technical/math' }
         ]
       }
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/vuejs/vitepress' }
+      { icon: 'github', link: 'https://github.com/mfindeisen/modernRtiViewer' }
     ]
   }
 })

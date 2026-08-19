@@ -16,8 +16,8 @@ hero:
 features:
   - title: Multi-Resolution Quadtree
     details: Loads extremely large gigapixel images smoothly by streaming hierarchical Level-of-Detail (LOD) image tiles on demand.
-  - title: HSH & PTM Support
-    details: Full shader-level mathematical implementation for both Polynomial Texture Mapping (PTM) and Hemispherical Harmonics (HSH) formats.
+  - title: PTM, HSH & Neural RTI
+    details: Shader-level implementations for Polynomial Texture Mapping, Hemispherical Harmonics, and Neural RTI (latent map + decoder MLP).
   - title: Vue 3 Reactivity
-    details: Built from the ground up using Vue 3 Composition API with seamless Three.js integration for absolute maximum rendering performance.
+    details: Vue 3 Composition API with Three.js, lazy GeoTIFF loading, and a standalone web-component embed API.
 ---
