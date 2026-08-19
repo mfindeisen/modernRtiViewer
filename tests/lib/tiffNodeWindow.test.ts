@@ -34,4 +34,19 @@ describe('paddedNodePixelWindow', () => {
     expect(window.x0 - window.nx0).toBeGreaterThan(0);
     expect(window.y0 - window.ny0).toBeGreaterThan(0);
   });
+
+  it('maps a 256 leaf onto one TIFF tile when the canvas is already the padded grid', () => {
+    const window = paddedNodePixelWindow(
+      { minX: 0, maxX: 0.25, minY: 0.75, maxY: 1 },
+      1024,
+      1024,
+      1024,
+      1024,
+      1024,
+    );
+    expect(window).toMatchObject({
+      x0: 0, y0: 0, x1: 256, y1: 256,
+      tileW: 256, tileH: 256,
+    });
+  });
 });
