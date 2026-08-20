@@ -283,10 +283,10 @@ const emit = defineEmits([
   'toggle-info',
 ]);
 
-const sidebarEl = ref(null);
-const annotateWrapEl = ref(null);
+const sidebarEl = ref<HTMLElement | null>(null);
+const annotateWrapEl = ref<HTMLElement | null>(null);
 const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
-const shapeMenuStyle = ref({});
+const shapeMenuStyle = ref<Record<string, string>>({});
 defineExpose({ sidebarEl });
 
 const SHAPE_MENU_MARGIN = 16;
@@ -294,7 +294,7 @@ const SHAPE_MENU_WIDTH = 20 * 16;
 
 function updateShapeMenuPosition() {
   const el = annotateWrapEl.value;
-  if (!(el instanceof HTMLElement) || !isNarrow.value) return;
+  if (!el || !isNarrow.value) return;
   const rect = el.getBoundingClientRect();
   const width = Math.min(SHAPE_MENU_WIDTH, window.innerWidth - SHAPE_MENU_MARGIN * 2);
   const top = Math.min(rect.bottom + 8, window.innerHeight - SHAPE_MENU_MARGIN - 160);
