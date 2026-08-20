@@ -13,15 +13,84 @@ describe('annotationEdit', () => {
     );
   });
 
+  const rect = { x1: 0.1, y1: 0.2, x2: 0.4, y2: 0.6 };
+
+  it('resizes a rectangle from the north edge without moving the south edge', () => {
+    const next = applyAnnotationEdit(
+      'rectangle',
+      rect,
+      'n',
+      { x: 0.25, y: 0.6 },
+      { x: 0.25, y: 0.45 },
+    );
+    expect(next).toEqual({ x1: 0.1, y1: 0.2, x2: 0.4, y2: 0.45 });
+  });
+
+  it('resizes a rectangle from the south edge without moving the north edge', () => {
+    const next = applyAnnotationEdit(
+      'rectangle',
+      rect,
+      's',
+      { x: 0.25, y: 0.2 },
+      { x: 0.25, y: 0.3 },
+    );
+    expect(next).toEqual({ x1: 0.1, y1: 0.3, x2: 0.4, y2: 0.6 });
+  });
+
   it('resizes a rectangle from the SE handle', () => {
     const next = applyAnnotationEdit(
       'rectangle',
-      { x1: 0.1, y1: 0.1, x2: 0.4, y2: 0.4 },
+      rect,
       'se',
-      { x: 0.4, y: 0.4 },
-      { x: 0.6, y: 0.5 },
+      { x: 0.4, y: 0.2 },
+      { x: 0.55, y: 0.1 },
     );
-    expect(next).toEqual({ x1: 0.1, y1: 0.1, x2: 0.6, y2: 0.5 });
+    expect(next).toEqual({ x1: 0.1, y1: 0.1, x2: 0.55, y2: 0.6 });
+  });
+
+  it('stops a moved rectangle at the image edge', () => {
+    const next = applyAnnotationEdit(
+      'rectangle',
+      { x1: 0.7, y1: 0.7, x2: 0.9, y2: 0.9 },
+      'move',
+      { x: 0.8, y: 0.8 },
+      { x: 1.3, y: 0.8 },
+    );
+    expect(next).toEqual({ x1: 0.8, y1: 0.7, x2: 1, y2: 0.9 });
+  });
+
+  it('keeps a point on the image when dragged past the edge', () => {
+    const next = applyAnnotationEdit(
+      'point',
+      { position: [0.9, 0.5] },
+      'move',
+      { x: 0.9, y: 0.5 },
+      { x: 1.4, y: 0.5 },
+    );
+    expect(next.position).toEqual([1, 0.5]);
+  });
+
+  it('stops a resized rectangle edge at the image boundary', () => {
+    const next = applyAnnotationEdit(
+      'rectangle',
+      rect,
+      'e',
+      { x: 0.4, y: 0.4 },
+      { x: 1.4, y: 0.4 },
+    );
+    expect(next).toEqual({ x1: 0.1, y1: 0.2, x2: 1, y2: 0.6 });
+  });
+
+  it('caps a circle radius so it stays on the image', () => {
+    const next = applyAnnotationEdit(
+      'circle',
+      { center: [0.8, 0.5], radius: 0.1 },
+      'radius',
+      { x: 0.9, y: 0.5 },
+      { x: 0.2, y: 0.5 },
+    );
+    expect(next.center).toEqual([0.8, 0.5]);
+    expect(next.radius).toBeCloseTo(0.2);
   });
 
   it('hits a point near its center', () => {

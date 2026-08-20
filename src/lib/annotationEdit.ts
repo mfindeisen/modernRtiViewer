@@ -18,6 +18,71 @@ function near(ax: number, ay: number, bx: number, by: number, r = HANDLE_HIT) {
   return Math.hypot(ax - bx, ay - by) <= r;
 }
 
+export function clamp01(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.min(1, Math.max(0, value));
+}
+
+export function clampImageNorm(point: { x: number; y: number }) {
+  return { x: clamp01(point.x), y: clamp01(point.y) };
+}
+
+function safeAspect(imageAspect: number) {
+  return imageAspect > 0 ? imageAspect : 1;
+}
+
+export function maxCircleRadiusAt(center: number[], imageAspect = 1) {
+  const aspect = safeAspect(imageAspect);
+  const cx = clamp01(center[0]);
+  const cy = clamp01(center[1]);
+  return Math.max(0, Math.min(cx, 1 - cx, cy * aspect, (1 - cy) * aspect));
+}
+
+function shiftDeltaToFit(min: number, max: number) {
+  const span = max - min;
+  if (span >= 1) return 0.5 - (min + max) / 2;
+  if (min < 0) return -min;
+  if (max > 1) return 1 - max;
+  return 0;
+}
+
+export function clampAnnotationGeometry(
+  type: string,
+  geometry: Record<string, unknown>,
+  imageAspect = 1,
+): Record<string, unknown> {
+  if (type === 'point') {
+    const pos = geometry.position as number[];
+    return { position: [clamp01(pos[0]), clamp01(pos[1])] };
+  }
+
+  if (type === 'circle') {
+    const aspect = safeAspect(imageAspect);
+    const center = geometry.center as number[];
+    let radius = Math.max(0, Number(geometry.radius) || 0);
+    let cx = center[0];
+    let cy = center[1];
+    const ry = radius / aspect;
+    cx += shiftDeltaToFit(cx - radius, cx + radius);
+    cy += shiftDeltaToFit(cy - ry, cy + ry);
+    radius = Math.min(radius, maxCircleRadiusAt([cx, cy], aspect));
+    return { center: [clamp01(cx), clamp01(cy)], radius };
+  }
+
+  const x1 = Number(geometry.x1);
+  const y1 = Number(geometry.y1);
+  const x2 = Number(geometry.x2);
+  const y2 = Number(geometry.y2);
+  const dx = shiftDeltaToFit(Math.min(x1, x2), Math.max(x1, x2));
+  const dy = shiftDeltaToFit(Math.min(y1, y2), Math.max(y1, y2));
+  return {
+    x1: clamp01(x1 + dx),
+    y1: clamp01(y1 + dy),
+    x2: clamp01(x2 + dx),
+    y2: clamp01(y2 + dy),
+  };
+}
+
 export function rectHandlePositions(shape: Extract<OverlayShape, { kind: 'rect' }>) {
   const x1 = shape.x;
   const y1 = shape.y;
@@ -102,29 +167,31 @@ export function resizeRectGeometry(
   handle: AnnotationEditHandle,
   point: { x: number; y: number },
 ) {
-  let x1 = Number(geometry.x1);
-  let y1 = Number(geometry.y1);
-  let x2 = Number(geometry.x2);
-  let y2 = Number(geometry.y2);
+  const x1 = Number(geometry.x1);
+  const y1 = Number(geometry.y1);
+  const x2 = Number(geometry.x2);
+  const y2 = Number(geometry.y2);
   const left = Math.min(x1, x2);
   const right = Math.max(x1, x2);
-  const top = Math.min(y1, y2);
-  const bottom = Math.max(y1, y2);
+  // Image-norm Y increases upward (world space), opposite of screen Y.
+  // Visual north is max(y); visual south is min(y).
+  const south = Math.min(y1, y2);
+  const north = Math.max(y1, y2);
   let nextLeft = left;
   let nextRight = right;
-  let nextTop = top;
-  let nextBottom = bottom;
+  let nextSouth = south;
+  let nextNorth = north;
 
-  if (handle.includes('w')) nextLeft = point.x;
-  if (handle.includes('e')) nextRight = point.x;
-  if (handle.includes('n')) nextTop = point.y;
-  if (handle.includes('s')) nextBottom = point.y;
+  if (handle.includes('w')) nextLeft = clamp01(point.x);
+  if (handle.includes('e')) nextRight = clamp01(point.x);
+  if (handle.includes('n')) nextNorth = clamp01(point.y);
+  if (handle.includes('s')) nextSouth = clamp01(point.y);
 
   return {
     x1: Math.min(nextLeft, nextRight),
-    y1: Math.min(nextTop, nextBottom),
+    y1: Math.min(nextSouth, nextNorth),
     x2: Math.max(nextLeft, nextRight),
-    y2: Math.max(nextTop, nextBottom),
+    y2: Math.max(nextSouth, nextNorth),
   };
 }
 
@@ -137,13 +204,19 @@ export function applyAnnotationEdit(
   imageAspect = 1,
 ): Record<string, unknown> {
   if (handle === 'move') {
-    return translateGeometry(type, startGeometry, current.x - start.x, current.y - start.y);
+    return clampAnnotationGeometry(
+      type,
+      translateGeometry(type, startGeometry, current.x - start.x, current.y - start.y),
+      imageAspect,
+    );
   }
   if (type === 'circle' && handle === 'radius') {
-    return resizeCircleRadius(startGeometry, current, imageAspect);
+    const resized = resizeCircleRadius(startGeometry, current, imageAspect);
+    const maxR = maxCircleRadiusAt(resized.center as number[], imageAspect);
+    return { center: resized.center, radius: Math.min(Number(resized.radius) || 0, maxR) };
   }
   if (type === 'rectangle') {
-    return resizeRectGeometry(startGeometry, handle, current);
+    return resizeRectGeometry(startGeometry, handle, clampImageNorm(current));
   }
   return startGeometry;
 }

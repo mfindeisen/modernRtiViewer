@@ -109,23 +109,49 @@ describe('useAnnotations', () => {
     expect(annotationStrokeWidth.value).toBe(7);
   });
 
-  it('emits click for finished annotation shapes', () => {
-    const ann: Annotation = { id: 'a1', type: 'point', geometry: { position: [0, 0] } };
-    const { onShapeClick, selectedAnnotationId } = createAnnotations();
-
-    onShapeClick({
+  function sampleShape(ann: Annotation, extra: Partial<OverlayShape> = {}): OverlayShape {
+    return {
       kind: 'point',
-      key: 'a1',
+      key: String(ann.id),
       cx: 0,
       cy: 0,
       r: 6,
       color: '#f59e0b',
       strokeWidth: 2,
       draft: false,
-      annotationId: 'a1',
+      annotationId: String(ann.id),
       ann,
-    } as OverlayShape);
+      ...extra,
+    } as OverlayShape;
+  }
 
+  it('lets measure and pan ignore annotation hit targets', () => {
+    const ann: Annotation = { id: 'a1', type: 'point', geometry: { position: [0, 0] } };
+    const { shapeInteractionClass } = createAnnotations();
+
+    currentMode.value = 'measure';
+    expect(shapeInteractionClass(sampleShape(ann))).toBe('pointer-events-none');
+    currentMode.value = 'pan';
+    expect(shapeInteractionClass(sampleShape(ann))).toBe('pointer-events-none');
+    currentMode.value = 'annotate';
+    expect(shapeInteractionClass(sampleShape(ann))).toBe('pointer-events-auto cursor-move');
+  });
+
+  it('emits click for finished annotation shapes only in annotate mode', () => {
+    const ann: Annotation = { id: 'a1', type: 'point', geometry: { position: [0, 0] } };
+    const { onShapeClick, selectedAnnotationId } = createAnnotations();
+    const shape = sampleShape(ann);
+
+    onShapeClick(shape);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(selectedAnnotationId.value).toBeNull();
+
+    currentMode.value = 'measure';
+    onShapeClick(shape);
+    expect(onClick).not.toHaveBeenCalled();
+
+    currentMode.value = 'annotate';
+    onShapeClick(shape);
     expect(selectedAnnotationId.value).toBe('a1');
     expect(onClick).toHaveBeenCalledWith(ann);
   });

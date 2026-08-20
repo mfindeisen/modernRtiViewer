@@ -27,7 +27,9 @@ import {
 import { buildOverlayShapes } from '../lib/annotationOverlay.js';
 import {
   applyAnnotationEdit,
+  clamp01,
   hitTestOverlayShape,
+  maxCircleRadiusAt,
   type AnnotationEditHandle,
 } from '../lib/annotationEdit.js';
 import type { OverlayShape } from '../types/annotations.js';
@@ -60,6 +62,8 @@ export function useAnnotations({
   let drawingAnnotation = false;
   let annotateStartNorm: { x: number; y: number } | null = null;
   let editing = false;
+  let editMoved = false;
+  let consumeNextShapeClick = false;
   let editHandle: AnnotationEditHandle | null = null;
   let editStartNorm: { x: number; y: number } | null = null;
   let editStartGeometry: Record<string, unknown> | null = null;
@@ -86,7 +90,7 @@ export function useAnnotations({
     }
   }
 
-  function pointerToImageNorm(e: PointerEvent) {
+  function pointerToImageNorm(e: PointerEvent, opts?: { clamp?: boolean }) {
     if (!renderer.value || !quadtree.value || !camera.value) return null;
     const rect = renderer.value.domElement.getBoundingClientRect();
     const sx = e.clientX - rect.left;
@@ -95,6 +99,7 @@ export function useAnnotations({
     if (!world) return null;
     const norm = worldToImageNorm(world.x, world.y, quadtree.value);
     if (!norm) return null;
+    if (opts?.clamp) return { x: clamp01(norm.x), y: clamp01(norm.y) };
     if (norm.x < 0 || norm.x > 1 || norm.y < 0 || norm.y > 1) return null;
     return norm;
   }
@@ -168,6 +173,8 @@ export function useAnnotations({
     annotateStartNorm = null;
     drawingAnnotation = false;
     editing = false;
+    editMoved = false;
+    consumeNextShapeClick = false;
     editHandle = null;
     editStartNorm = null;
     editStartGeometry = null;
@@ -204,22 +211,32 @@ export function useAnnotations({
   }
 
   function shapeInteractionClass(shape: OverlayShape) {
-    if (shape.draft) {
+    if (shape.draft || currentMode.value !== 'annotate') {
       return 'pointer-events-none';
     }
-    if (currentMode.value === 'annotate') {
-      return 'pointer-events-auto cursor-move';
-    }
-    if (!shape.annotationId) {
-      return 'pointer-events-none';
-    }
-    return 'pointer-events-auto cursor-pointer';
+    return 'pointer-events-auto cursor-move';
+  }
+
+  function emitAnnotationClick(ann: Annotation) {
+    selectedAnnotationId.value = ann.id == null ? null : String(ann.id);
+    onClick(ann);
+  }
+
+  function resetEditSession() {
+    editing = false;
+    editHandle = null;
+    editStartNorm = null;
+    editStartGeometry = null;
+    editAnnotation = null;
   }
 
   function onShapeClick(shape: OverlayShape) {
-    if (shape.draft || currentMode.value === 'annotate' || !shape.ann) return;
-    selectedAnnotationId.value = shape.annotationId == null ? null : String(shape.annotationId);
-    onClick(shape.ann);
+    if (consumeNextShapeClick) {
+      consumeNextShapeClick = false;
+      return;
+    }
+    if (shape.draft || currentMode.value !== 'annotate' || !shape.ann) return;
+    emitAnnotationClick(shape.ann);
   }
 
   function onAnnotationWheel(e: WheelEvent) {
@@ -283,18 +300,15 @@ export function useAnnotations({
       editStartGeometry.center = [...(ann.geometry as { center: number[] }).center];
     }
     editAnnotation = ann;
+    editMoved = false;
     getOverlayEl()?.setPointerCapture(pointerId);
   }
 
   function commitEdit() {
     if (!editing || !editAnnotation || !editHandle || !editStartGeometry) return;
     const geometry = editAnnotation.geometry;
-    editing = false;
-    editHandle = null;
-    editStartNorm = null;
-    editStartGeometry = null;
     const ann = editAnnotation;
-    editAnnotation = null;
+    resetEditSession();
     onUpdate?.(ann);
     updateOverlayShapes();
     return geometry;
@@ -357,8 +371,10 @@ export function useAnnotations({
 
   function onAnnotationPointerMove(e: PointerEvent) {
     if (editing && editAnnotation && editHandle && editStartNorm && editStartGeometry) {
-      const point = pointerToImageNorm(e);
+      const point = pointerToImageNorm(e, { clamp: true });
       if (!point) return;
+      if (!editMoved && isPointClick(editStartNorm, point)) return;
+      editMoved = true;
       editAnnotation.geometry = applyAnnotationEdit(
         editAnnotation.type,
         editStartGeometry,
@@ -372,7 +388,7 @@ export function useAnnotations({
     }
 
     if (!drawingAnnotation || !draftAnnotation.value) return;
-    const point = pointerToImageNorm(e);
+    const point = pointerToImageNorm(e, { clamp: true });
     if (!point) return;
     const draft = draftAnnotation.value;
 
@@ -380,11 +396,12 @@ export function useAnnotations({
       const centerArr = draft.geometry.center as number[];
       const center = { x: centerArr[0], y: centerArr[1] };
       const qt = quadtree.value;
+      const radius = qt ? imageNormCircleRadius(center, point, qt) : 0;
       draftAnnotation.value = {
         type: 'circle',
         geometry: {
           center: draft.geometry.center,
-          radius: qt ? imageNormCircleRadius(center, point, qt) : 0,
+          radius: Math.min(radius, maxCircleRadiusAt(centerArr, imageAspect())),
         },
       };
     } else if (draft.type === 'rectangle') {
@@ -404,7 +421,14 @@ export function useAnnotations({
   function onAnnotationPointerUp(e: PointerEvent) {
     if (editing) {
       getOverlayEl()?.releasePointerCapture(e.pointerId);
-      commitEdit();
+      const ann = editAnnotation;
+      consumeNextShapeClick = true;
+      if (editMoved) {
+        commitEdit();
+      } else {
+        resetEditSession();
+        if (ann) emitAnnotationClick(ann);
+      }
       return;
     }
 
