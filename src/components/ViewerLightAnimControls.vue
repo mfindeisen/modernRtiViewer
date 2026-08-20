@@ -1,6 +1,9 @@
 <template>
   <div
-    class="w-[11.5rem] h-24 rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/20 shadow-[0_8px_24px_rgba(0,0,0,0.55)] px-2.5 py-2 flex flex-col justify-between pointer-events-auto"
+    class="rounded-xl bg-slate-950/75 backdrop-blur-md border border-white/20 shadow-[0_8px_24px_rgba(0,0,0,0.55)] pointer-events-auto"
+    :class="compact
+      ? 'w-auto min-w-[9.5rem] px-2 py-1.5 flex flex-col gap-1.5'
+      : 'w-[11.5rem] h-24 px-2.5 py-2 flex flex-col justify-between'"
     @pointerdown.stop
   >
     <div class="flex items-center gap-1.5">
@@ -29,7 +32,7 @@
         </button>
       </div>
     </div>
-    <label class="flex flex-col gap-1">
+    <label v-if="!compact || playing" class="flex flex-col gap-1">
       <span class="flex items-center justify-between text-[10px] uppercase tracking-wide text-white/50">
         <span>Speed</span>
         <span class="text-white/80 tabular-nums normal-case tracking-normal">{{ formatLightAnimSpeed(speed) }}</span>
@@ -56,6 +59,7 @@ defineProps({
   playing: { type: Boolean, default: false },
   mode: { type: String, default: 'orbit' },
   speed: { type: Number, default: LIGHT_ANIM_SPEED.default },
+  compact: { type: Boolean, default: false },
 });
 
 const emit = defineEmits<{

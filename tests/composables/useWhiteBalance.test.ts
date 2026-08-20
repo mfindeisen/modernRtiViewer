@@ -86,4 +86,19 @@ describe('useWhiteBalance', () => {
     expect(wbPickFeedback.value).toBe('White balance applied');
     expect(updateColorGainOnMeshes).toHaveBeenCalled();
   });
+
+  it('reports whether a pick applied white balance', () => {
+    pointerToImageNorm.mockReturnValue(null);
+    const { pick } = useWhiteBalance({
+      currentMode,
+      colorGainVector,
+      updateColorGainOnMeshes,
+      pointerToImageNorm,
+      sampleColorAtScreen,
+    });
+
+    expect(pick(mockPointerEvent())).toBe(false);
+    pointerToImageNorm.mockReturnValue({ x: 0.5, y: 0.5 });
+    expect(pick(mockPointerEvent())).toBe(true);
+  });
 });

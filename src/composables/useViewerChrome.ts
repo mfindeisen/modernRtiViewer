@@ -1,6 +1,7 @@
 import { ref } from 'vue';
 import { buildShareUrl } from '../lib/viewerUrl.js';
 import { captureRtiView, applyRtiView } from '../lib/viewerViewState.js';
+import { NARROW_VIEWPORT_QUERY } from '../lib/viewport.js';
 
 import type { UseViewerChromeOptions, ViewerMode } from './types.js';
 import type { Annotation } from '../types/rti.js';
@@ -167,7 +168,7 @@ export function useViewerChrome({
 
     // On mobile the parent flex chain caps height to the viewport; forcing
     // sidebar scrollHeight as min-height clips the toolbar and light compass.
-    if (window.matchMedia('(max-width: 1023px)').matches) {
+    if (window.matchMedia(NARROW_VIEWPORT_QUERY).matches) {
       root.style.minHeight = '';
       if (host) host.style.minHeight = '';
       return;

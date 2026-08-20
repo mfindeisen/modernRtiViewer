@@ -93,4 +93,59 @@ describe('useRtiInteraction', () => {
 
     expect(onWhiteBalancePick).toHaveBeenCalled();
   });
+
+  it('reports a short pan-mode tap and ignores drags', () => {
+    const onCanvasTap = vi.fn();
+    const canvas = document.createElement('canvas');
+    const { setup } = useRtiInteraction({
+      currentMode,
+      lightDir,
+      container,
+      getRenderer: () => ({ domElement: canvas } as unknown as THREE.WebGLRenderer),
+      getCompassEl: () => undefined,
+      setControlMode: setControlMode as (mode: ViewerMode) => void,
+      onCanvasTap,
+    });
+    setup();
+
+    container.value.dispatchEvent(new PointerEvent('pointerdown', {
+      pointerId: 1, clientX: 10, clientY: 10, bubbles: true,
+    }));
+    container.value.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: 1, clientX: 12, clientY: 11, bubbles: true,
+    }));
+    expect(onCanvasTap).toHaveBeenCalledTimes(1);
+
+    container.value.dispatchEvent(new PointerEvent('pointerdown', {
+      pointerId: 2, clientX: 10, clientY: 10, bubbles: true,
+    }));
+    container.value.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: 2, clientX: 40, clientY: 10, bubbles: true,
+    }));
+    expect(onCanvasTap).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not treat light-mode clicks as canvas taps', () => {
+    currentMode.value = 'light';
+    const onCanvasTap = vi.fn();
+    const canvas = document.createElement('canvas');
+    const { setup } = useRtiInteraction({
+      currentMode,
+      lightDir,
+      container,
+      getRenderer: () => ({ domElement: canvas } as unknown as THREE.WebGLRenderer),
+      getCompassEl: () => undefined,
+      setControlMode: setControlMode as (mode: ViewerMode) => void,
+      onCanvasTap,
+    });
+    setup();
+
+    container.value.dispatchEvent(new PointerEvent('pointerdown', {
+      pointerId: 1, clientX: 10, clientY: 10, bubbles: true,
+    }));
+    container.value.dispatchEvent(new PointerEvent('pointerup', {
+      pointerId: 1, clientX: 10, clientY: 10, bubbles: true,
+    }));
+    expect(onCanvasTap).not.toHaveBeenCalled();
+  });
 });

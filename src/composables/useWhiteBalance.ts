@@ -46,16 +46,17 @@ export function useWhiteBalance({
   function pick(e: PointerEvent) {
     if (!pointerToImageNorm(e)) {
       showFeedback('Click inside the image');
-      return;
+      return false;
     }
     const sampled = sampleColorAtScreen(e.clientX, e.clientY);
     if (!sampled) {
       showFeedback('No color at this location');
-      return;
+      return false;
     }
     colorGain.value = computeColorGainsFromSample(sampled.r, sampled.g, sampled.b);
     updateColorGain();
     showFeedback('White balance applied');
+    return true;
   }
 
   function reset() {

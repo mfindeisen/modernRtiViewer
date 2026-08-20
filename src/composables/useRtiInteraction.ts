@@ -3,6 +3,7 @@ import {
   canvasPointerToNormalizedUv,
   compassPointerToNormalizedUv,
 } from '../lib/lightDirection.js';
+import { isTap, startTap, type TapTracker } from '../lib/viewport.js';
 
 function addListener(
   target: EventTarget,
@@ -35,6 +36,7 @@ export function useRtiInteraction({
   lightDir2,
   dualLinked,
   onDualUnlink,
+  onCanvasTap,
 }: UseRtiInteractionOptions) {
   let teardown: (() => void) | null = null;
 
@@ -127,6 +129,8 @@ export function useRtiInteraction({
     let isDraggingLight = false;
     let isDraggingCompass = false;
     let lightTarget: LightTarget = 'primary';
+    let tapStart: TapTracker | null = null;
+    let activePointers = 0;
 
     const handleCanvasPointerMove = (e: PointerEvent) => {
       const rect = containerEl.getBoundingClientRect();
@@ -137,6 +141,10 @@ export function useRtiInteraction({
 
     cleanups.push(addListener(containerEl, 'pointerdown', (e: Event) => {
       const event = e as PointerEvent;
+      activePointers += 1;
+      if (activePointers > 1) tapStart = null;
+      else if (currentMode.value === 'pan') tapStart = startTap(event);
+
       if (currentMode.value === 'light') {
         isDraggingLight = true;
         lightTarget = (event.shiftKey && getDualMode?.()) ? 'secondary' : 'primary';
@@ -153,15 +161,21 @@ export function useRtiInteraction({
       }
     }));
 
-    const releaseLightDrag = (e: Event) => {
+    const releasePointer = (e: Event, allowTap: boolean) => {
+      const event = e as PointerEvent;
+      if (activePointers > 0) activePointers -= 1;
+      if (allowTap && currentMode.value === 'pan' && isTap(tapStart, event)) {
+        onCanvasTap?.();
+      }
+      tapStart = null;
       if (!isDraggingLight) return;
-      containerEl.releasePointerCapture((e as PointerEvent).pointerId);
+      containerEl.releasePointerCapture(event.pointerId);
       isDraggingLight = false;
       lightTarget = 'primary';
     };
 
-    cleanups.push(addListener(containerEl, 'pointerup', releaseLightDrag));
-    cleanups.push(addListener(containerEl, 'pointercancel', releaseLightDrag));
+    cleanups.push(addListener(containerEl, 'pointerup', (e) => releasePointer(e, true)));
+    cleanups.push(addListener(containerEl, 'pointercancel', (e) => releasePointer(e, false)));
 
     const compassEl = getCompassEl?.();
     if (compassEl) {

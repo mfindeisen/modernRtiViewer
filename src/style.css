@@ -7,3 +7,51 @@
   --color-slate-800: #1e293b;
   --color-slate-900: #0f172a;
 }
+
+/*
+  Host apps (rtiDb) also load Tailwind. Equal-specificity utilities like
+  `.flex-row` in the host stylesheet can override this viewer's
+  `max-lg:flex-col` and collapse the mobile toolbar to a single icon.
+*/
+@media (max-width: 1023px) {
+  .rti-viewer-root {
+    flex-direction: column !important;
+    /* Sit flush under a host header (rtiDb Modern/Legacy bar). */
+    border-top-left-radius: 0 !important;
+    border-top-right-radius: 0 !important;
+  }
+
+  .rti-viewer-sidebar {
+    width: 100% !important;
+    height: 3.5rem !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-right-width: 0 !important;
+    border-bottom-width: 1px !important;
+    border-radius: 0 !important;
+  }
+
+  .rti-viewer-sidebar-inner {
+    flex-direction: row !important;
+    width: auto !important;
+    min-width: max-content !important;
+    padding: 0.25rem 0.5rem !important;
+  }
+
+  .rti-viewer-sidebar-tools {
+    margin-top: 0 !important;
+    flex-direction: row !important;
+  }
+
+  .rti-viewer-divider {
+    width: 1px !important;
+    height: 1.25rem !important;
+    margin: 0 0.25rem !important;
+  }
+
+  .rti-viewer-sidebar button {
+    margin-bottom: 0 !important;
+    padding: 0.5rem !important;
+  }
+}

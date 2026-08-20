@@ -1,12 +1,14 @@
 <template>
-  <div
-    v-if="open && !loading"
-    class="absolute right-4 z-40 w-64 rounded-xl bg-slate-900/90 backdrop-blur-md border border-white/10 shadow-2xl p-4 pointer-events-auto"
-    :class="stackBelowWhiteBalance ? 'top-52' : 'top-4'"
-    @pointerdown.stop
+  <ViewerToolSheet
+    :open="open && !loading"
+    title="Enhancements"
+    :narrow="narrow"
+    :expanded="expanded"
+    :above-chrome="aboveChrome"
+    :desktop-class="desktopClass"
+    @update:expanded="emit('update:expanded', $event)"
   >
-    <div class="flex items-center justify-between mb-3">
-      <h3 class="text-sm font-semibold text-white">Enhancements</h3>
+    <template #actions>
       <button
         type="button"
         class="text-[10px] font-medium text-slate-400 hover:text-white transition-colors"
@@ -14,7 +16,7 @@
       >
         Reset
       </button>
-    </div>
+    </template>
 
     <div class="flex flex-col gap-3 text-xs text-slate-400">
       <template v-if="lineDrawingMode">
@@ -212,11 +214,13 @@
       </p>
       </template>
     </div>
-  </div>
+  </ViewerToolSheet>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import ViewerCheckbox from './ViewerCheckbox.vue';
+import ViewerToolSheet from './ViewerToolSheet.vue';
 import ExperimentalBadge from './ExperimentalBadge.vue';
 import {
   DIFFUSE_GAIN_LIMITS,
@@ -237,7 +241,7 @@ import {
   type LineDrawingStyle,
 } from '../lib/rtiEnhancements.js';
 
-defineProps({
+const props = defineProps({
   open: { type: Boolean, default: false },
   loading: { type: Boolean, default: false },
   diffuseGain: { type: Number, required: true },
@@ -249,6 +253,9 @@ defineProps({
   dualMode: { type: Boolean, default: false },
   dualLinked: { type: Boolean, default: true },
   stackBelowWhiteBalance: { type: Boolean, default: false },
+  narrow: { type: Boolean, default: false },
+  expanded: { type: Boolean, default: true },
+  aboveChrome: { type: Boolean, default: false },
   lineDrawingMode: { type: Boolean, default: false },
   ridgeThreshold: { type: Number, default: 0.14 },
   valleyThreshold: { type: Number, default: 0.1 },
@@ -272,7 +279,13 @@ const emit = defineEmits([
   'update:lineHatch',
   'update:lineDrawingStyle',
   'reset',
+  'update:expanded',
 ]);
+
+const desktopClass = computed(() => [
+  'absolute right-4 z-40 w-64 rounded-xl bg-slate-900/90 backdrop-blur-md border border-white/10 shadow-2xl p-4',
+  props.stackBelowWhiteBalance ? 'top-52' : 'top-4',
+].join(' '));
 
 const gainLimits = DIFFUSE_GAIN_LIMITS;
 const unsharpLimits = UNSHARP_LIMITS;

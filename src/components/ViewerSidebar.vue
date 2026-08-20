@@ -1,6 +1,6 @@
 <template>
-  <div ref="sidebarEl" class="w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:w-full max-lg:h-14 max-lg:flex-row max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:rounded-t-xl max-lg:rounded-b-none max-lg:border-r-0 max-lg:border-b">
-    <div class="flex flex-col items-center py-4 w-full max-lg:flex-row max-lg:py-1 max-lg:px-2 max-lg:w-auto max-lg:min-w-max">
+  <div ref="sidebarEl" class="rti-viewer-sidebar w-16 bg-slate-800 border-r border-slate-700 flex flex-col relative z-50 shrink-0 self-stretch rounded-l-xl max-lg:w-full max-lg:h-14 max-lg:flex-row max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:rounded-t-xl max-lg:rounded-b-none max-lg:border-r-0 max-lg:border-b">
+    <div class="rti-viewer-sidebar-inner flex flex-col items-center py-4 w-full max-lg:flex-row max-lg:py-1 max-lg:px-2 max-lg:w-auto max-lg:min-w-max">
         <SidebarTooltip title="Pan & Zoom" description="Navigate the image (H)">
         <button aria-label="Pan & Zoom" :aria-pressed="currentMode === 'pan'" @click="emit('set-mode', 'pan')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'pan' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
           <HandIcon class="w-5 h-5" />
@@ -13,7 +13,7 @@
         </button>
       </SidebarTooltip>
 
-      <div v-if="annotationEnabled" class="relative mb-2 flex flex-col items-center">
+      <div v-if="annotationEnabled" ref="annotateWrapEl" class="relative mb-2 flex flex-col items-center">
         <SidebarTooltip title="Annotate" :description="`${activeShapeHint} (A)`">
           <button
             aria-label="Annotate"
@@ -29,11 +29,16 @@
             />
           </button>
         </SidebarTooltip>
-        <div
-          v-if="currentMode === 'annotate' && shapeMenuOpen"
-          class="absolute left-full top-0 ml-2 z-[60] w-48 rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur-md shadow-2xl py-1.5"
-          @pointerdown.stop
-        >
+        <Teleport to="body" :disabled="!isNarrow">
+          <div
+            v-if="currentMode === 'annotate' && shapeMenuOpen"
+            class="rounded-xl border border-white/10 bg-slate-900/95 backdrop-blur-md shadow-2xl py-1.5"
+            :class="isNarrow
+              ? 'fixed z-[220] overflow-y-auto'
+              : 'absolute left-full top-0 ml-2 z-[60] w-48'"
+            :style="isNarrow ? shapeMenuStyle : undefined"
+            @pointerdown.stop
+          >
           <p class="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">Shape</p>
           <button
             v-for="option in ANNOTATION_SHAPE_OPTIONS"
@@ -109,10 +114,11 @@
               />
             </svg>
           </div>
-        </div>
+          </div>
+        </Teleport>
       </div>
 
-      <div class="w-8 h-px bg-slate-700 my-4"></div>
+      <div class="rti-viewer-divider w-8 h-px bg-slate-700 my-4"></div>
 
       <SidebarTooltip v-if="featureOn('whiteBalance')" title="White Balance" description="Click a white or gray patch (W)">
         <button aria-label="White Balance" :aria-pressed="currentMode === 'whitebalance'" @click="emit('toggle-white-balance')" :class="['p-3 rounded-xl transition-all mb-2', currentMode === 'whitebalance' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:bg-white/10 hover:text-white']">
@@ -132,7 +138,7 @@
         </button>
       </SidebarTooltip>
 
-      <div class="w-8 h-px bg-slate-700 my-4"></div>
+      <div class="rti-viewer-divider w-8 h-px bg-slate-700 my-4"></div>
 
       <SidebarTooltip
         v-for="mode in renderModes"
@@ -156,8 +162,8 @@
         </button>
       </SidebarTooltip>
 
-      <div class="mt-auto flex flex-col items-center w-full max-lg:flex-row max-lg:mt-0">
-        <div class="w-8 h-px bg-slate-700 my-4"></div>
+      <div class="rti-viewer-sidebar-tools mt-auto flex flex-col items-center w-full max-lg:flex-row max-lg:mt-0">
+        <div class="rti-viewer-divider w-8 h-px bg-slate-700 my-4"></div>
         <SidebarTooltip :title="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'" description="Maximize workspace">
           <button :aria-label="isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'" @click="emit('toggle-fullscreen')" class="p-3 rounded-xl text-slate-400 hover:bg-white/10 hover:text-white transition-all mb-2">
             <component :is="isFullscreen ? MinimizeIcon : MaximizeIcon" class="w-5 h-5" />
@@ -184,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
 import {
   Hand as HandIcon,
   Lightbulb as LightbulbIcon,
@@ -211,6 +217,8 @@ import { ANNOTATION_COLOR_PRESETS, isPresetAnnotationColor } from '../lib/annota
 import { DEFAULT_EXPERIMENTAL_FEATURES, DEFAULT_VIEWER_FEATURES, type ViewerFeatureId, type ViewerFeatures } from '../lib/viewerConfig.js';
 import SidebarTooltip from './SidebarTooltip.vue';
 import AnnotationHsvPicker from './AnnotationHsvPicker.vue';
+import { useMediaQuery } from '../composables/useMediaQuery.js';
+import { NARROW_VIEWPORT_QUERY } from '../lib/viewport.js';
 
 const shapeIcons: Record<'point' | 'circle' | 'rectangle', typeof CircleIcon> = {
   point: CircleDotIcon,
@@ -276,7 +284,49 @@ const emit = defineEmits([
 ]);
 
 const sidebarEl = ref(null);
+const annotateWrapEl = ref(null);
+const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
+const shapeMenuStyle = ref({});
 defineExpose({ sidebarEl });
+
+const SHAPE_MENU_MARGIN = 16;
+const SHAPE_MENU_WIDTH = 20 * 16;
+
+function updateShapeMenuPosition() {
+  const el = annotateWrapEl.value;
+  if (!(el instanceof HTMLElement) || !isNarrow.value) return;
+  const rect = el.getBoundingClientRect();
+  const width = Math.min(SHAPE_MENU_WIDTH, window.innerWidth - SHAPE_MENU_MARGIN * 2);
+  const top = Math.min(rect.bottom + 8, window.innerHeight - SHAPE_MENU_MARGIN - 160);
+  shapeMenuStyle.value = {
+    top: `${Math.max(SHAPE_MENU_MARGIN, top)}px`,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    width: `${width}px`,
+    maxHeight: `${Math.max(160, window.innerHeight - Math.max(SHAPE_MENU_MARGIN, top) - SHAPE_MENU_MARGIN)}px`,
+  };
+}
+
+function stopShapeMenuTracking() {
+  window.removeEventListener('resize', updateShapeMenuPosition);
+  window.removeEventListener('scroll', updateShapeMenuPosition, true);
+}
+
+watch(
+  () => [props.shapeMenuOpen, props.currentMode, isNarrow.value],
+  async ([open, mode, narrow]) => {
+    if (!open || mode !== 'annotate' || !narrow) {
+      stopShapeMenuTracking();
+      return;
+    }
+    await nextTick();
+    updateShapeMenuPosition();
+    window.addEventListener('resize', updateShapeMenuPosition);
+    window.addEventListener('scroll', updateShapeMenuPosition, true);
+  },
+);
+
+onUnmounted(stopShapeMenuTracking);
 
 const RAINBOW_SWATCH = 'conic-gradient(from 0deg, #ef4444, #f59e0b, #22c55e, #14b8a6, #3b82f6, #8b5cf6, #ec4899, #ef4444)';
 const customPickerOpen = ref(false);

@@ -20,6 +20,8 @@ import {
 import { resolveViewerConfig, isFeatureEnabled } from '../lib/viewerConfig.js';
 import { DEFAULT_RENDER_MODE } from './useRenderSettings.js';
 import { useLightAnimation } from './useLightAnimation.js';
+import { useMediaQuery } from './useMediaQuery.js';
+import { NARROW_VIEWPORT_QUERY } from '../lib/viewport.js';
 import {
   imagePixelDistance,
   formatPixelDistance,
@@ -55,6 +57,11 @@ export function useRtiViewer({
   const loading = ref(true);
   const error = ref('');
   const currentMode = ref<ViewerMode>('pan');
+  const isNarrow = useMediaQuery(NARROW_VIEWPORT_QUERY);
+  const chromeVisible = ref(true);
+  const wbSheetExpanded = ref(true);
+  const enhancementsSheetExpanded = ref(true);
+  const measureSheetExpanded = ref(true);
   const viewerConfig = computed(() => resolveViewerConfig(props.features));
   const annotationUiEnabled = computed(() => !!props.annotationEnabled && isFeatureEnabled(viewerConfig.value, 'annotations'));
   const colorGainVector = new THREE.Vector3(1, 1, 1);
@@ -246,7 +253,9 @@ export function useRtiViewer({
     onLeaveAnnotate: clearDrawingState,
     onLeaveWhiteBalance: clearWbFeedback,
     onLeaveMeasure: () => clearMeasure(),
-    onWhiteBalancePick: pickWhiteBalance,
+    onWhiteBalancePick: (event) => {
+      if (pickWhiteBalance(event) && isNarrow.value) wbSheetExpanded.value = false;
+    },
     onLightChange: () => {
       lightAnimation.pause();
       requestRender();
@@ -255,11 +264,40 @@ export function useRtiViewer({
     lightDir2,
     dualLinked,
     onDualUnlink: () => setDualLinked(false),
+    onCanvasTap: () => {
+      if (!isNarrow.value) return;
+      chromeVisible.value = !chromeVisible.value;
+    },
   });
 
   const { setMode, toggleWhiteBalanceMode, setup: setupInteraction, dispose: disposeInteraction } = interaction;
 
   const showEnhancements = ref(false);
+
+  watch(isNarrow, (narrow) => {
+    if (!narrow) chromeVisible.value = true;
+  });
+
+  watch(currentMode, (mode) => {
+    if (mode === 'whitebalance') {
+      wbSheetExpanded.value = true;
+      if (isNarrow.value) showEnhancements.value = false;
+    }
+    if (mode === 'measure') {
+      measureSheetExpanded.value = true;
+      if (isNarrow.value) showEnhancements.value = false;
+    }
+  });
+
+  function openEnhancements() {
+    showEnhancements.value = true;
+    enhancementsSheetExpanded.value = true;
+  }
+
+  function toggleEnhancements() {
+    showEnhancements.value = !showEnhancements.value;
+    if (showEnhancements.value) enhancementsSheetExpanded.value = true;
+  }
 
   function isRenderModeAllowed(mode: number) {
     const features = viewerConfig.value.features;
@@ -273,7 +311,7 @@ export function useRtiViewer({
     const next = isRenderModeAllowed(mode) ? mode : DEFAULT_RENDER_MODE;
     setRenderMode(next);
     if (next === RENDER_MODE_GLOSSY || next === RENDER_MODE_LINE_DRAWING) {
-      showEnhancements.value = true;
+      openEnhancements();
     }
   }
 
@@ -746,7 +784,7 @@ export function useRtiViewer({
       }
       if (command.type === 'enhancements') {
         if (!viewerConfig.value.features.enhancements) return;
-        showEnhancements.value = !showEnhancements.value;
+        toggleEnhancements();
         return;
       }
       if (command.type === 'toggle-animation') {
@@ -990,6 +1028,12 @@ export function useRtiViewer({
     setMode,
     fitToView,
     resetLight,
+    isNarrow,
+    chromeVisible,
+    wbSheetExpanded,
+    enhancementsSheetExpanded,
+    measureSheetExpanded,
+    toggleEnhancements,
     showShortcuts,
     showEnhancements,
     showExportModal,

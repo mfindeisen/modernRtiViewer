@@ -56,6 +56,7 @@ export interface UseRtiInteractionOptions {
   lightDir2?: Ref<THREE.Vector3>;
   dualLinked?: Ref<boolean>;
   onDualUnlink?: () => void;
+  onCanvasTap?: () => void;
 }
 
 export interface UseAnnotationsOptions {

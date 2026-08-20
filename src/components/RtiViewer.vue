@@ -1,7 +1,7 @@
 <template>
   <div
     ref="rootWrapper"
-    class="relative flex flex-row max-lg:flex-col w-full h-full min-h-0 lg:min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700 outline-none"
+    class="rti-viewer-root relative flex flex-row max-lg:flex-col w-full h-full min-h-0 lg:min-h-[49rem] bg-slate-900 rounded-xl shadow-2xl border border-slate-700 outline-none"
     tabindex="0"
   >
 
@@ -29,7 +29,7 @@
       @select-annotation-stroke-width="selectAnnotationStrokeWidth"
       @toggle-white-balance="toggleWhiteBalanceMode"
       @toggle-measure="toggleMeasureMode"
-      @toggle-enhancements="showEnhancements = !showEnhancements"
+      @toggle-enhancements="toggleEnhancements"
       @set-render-mode="setRenderMode"
       @toggle-fullscreen="toggleFullscreen"
       @export-image="showExportModal = true"
@@ -147,7 +147,12 @@
         :gain-min="gainMin"
         :gain-max="gainMax"
         :pick-feedback="wbPickFeedback"
+        :narrow="isNarrow"
+        :expanded="wbSheetExpanded"
+        :above-chrome="isNarrow && chromeVisible"
+        :suppressed="isNarrow && showEnhancements"
         @update:color-gain="onColorGainUpdate"
+        @update:expanded="wbSheetExpanded = $event"
         @reset="resetWhiteBalance"
       />
 
@@ -170,6 +175,9 @@
         :line-hatch="lineHatch"
         :line-drawing-style="lineDrawingStyle"
         :stack-below-white-balance="(currentMode === 'whitebalance' || whiteBalanceActive) && !loading"
+        :narrow="isNarrow"
+        :expanded="enhancementsSheetExpanded"
+        :above-chrome="isNarrow && chromeVisible"
         @update:diffuse-gain="onDiffuseGainChange"
         @update:unsharp-amount="onUnsharpAmountChange"
         @update:exposure="onExposureChange"
@@ -182,6 +190,7 @@
         @update:line-hatch="onLineHatchChange"
         @update:line-drawing-style="onLineDrawingStyleChange"
         @update:dual-linked="setDualLinked"
+        @update:expanded="enhancementsSheetExpanded = $event"
         @reset="resetEnhancementPanel"
       />
 
@@ -193,41 +202,52 @@
         :default-unit="scaleCalibration?.unit || 'mm'"
         :has-scale="!!scaleCalibration"
         :scale-editable="scaleEditable"
+        :narrow="isNarrow"
+        :expanded="measureSheetExpanded"
+        :above-chrome="isNarrow && chromeVisible"
+        @update:expanded="measureSheetExpanded = $event"
         @save="confirmScale"
       />
 
       <div
-        v-if="!loading && !error"
-        class="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] left-[max(1.5rem,env(safe-area-inset-left,0px))] z-20 flex items-end gap-2.5"
+        v-if="!loading && !error && (!isNarrow || chromeVisible)"
+        class="absolute z-20 flex flex-wrap items-end justify-between gap-2 pointer-events-none"
+        :class="isNarrow
+          ? 'inset-x-0 bottom-0 px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]'
+          : 'bottom-[max(1.5rem,env(safe-area-inset-bottom,0px))] left-[max(1.5rem,env(safe-area-inset-left,0px))] right-[max(1.5rem,env(safe-area-inset-right,0px))]'"
       >
-        <LightCompass ref="compassComponentRef" :light-dir="lightDir" :light-dir2="lightDir2" :dual-mode="renderMode === 4" />
-        <ViewerLightAnimControls
-          v-if="viewerConfig.features.lightOrbit"
-          :playing="lightPlaying"
-          :mode="lightAnimMode"
-          :speed="lightAnimSpeed"
-          @toggle="lightAnimation.toggle()"
-          @update:mode="lightAnimation.setMode($event)"
-          @update:speed="lightAnimation.setSpeed($event)"
+        <div class="flex items-end gap-2.5 pointer-events-auto">
+          <LightCompass ref="compassComponentRef" :light-dir="lightDir" :light-dir2="lightDir2" :dual-mode="renderMode === 4" />
+          <ViewerLightAnimControls
+            v-if="viewerConfig.features.lightOrbit"
+            :playing="lightPlaying"
+            :mode="lightAnimMode"
+            :speed="lightAnimSpeed"
+            :compact="isNarrow"
+            @toggle="lightAnimation.toggle()"
+            @update:mode="lightAnimation.setMode($event)"
+            @update:speed="lightAnimation.setSpeed($event)"
+          />
+        </div>
+        <ViewerHud
+          :visible="true"
+          :compact="isNarrow"
+          :zoom-percent="hudZoomPercent"
+          :light-x="hudLightX"
+          :light-y="hudLightY"
+          :probe-rgb="hudProbeRgb"
+          :shortcuts-open="showShortcuts"
+          @fit="fitToView"
+          @reset-light="resetLight"
+          @toggle-shortcuts="showShortcuts = !showShortcuts"
         />
       </div>
       <ViewerShortcutsPanel
-        :open="showShortcuts"
+        :open="showShortcuts && !isNarrow"
         :annotation-enabled="annotationUiEnabled"
         :rti-type="rtiInfo?.type"
         :features="viewerConfig.features"
         @close="showShortcuts = false"
-      />
-      <ViewerHud
-        :visible="!loading && !error"
-        :zoom-percent="hudZoomPercent"
-        :light-x="hudLightX"
-        :light-y="hudLightY"
-        :probe-rgb="hudProbeRgb"
-        :shortcuts-open="showShortcuts"
-        @fit="fitToView"
-        @reset-light="resetLight"
-        @toggle-shortcuts="showShortcuts = !showShortcuts"
       />
     </div>
   </div>
@@ -381,6 +401,12 @@ const {
   setMode,
   fitToView,
   resetLight,
+  isNarrow,
+  chromeVisible,
+  wbSheetExpanded,
+  enhancementsSheetExpanded,
+  measureSheetExpanded,
+  toggleEnhancements,
   showShortcuts,
   showEnhancements,
   showExportModal,

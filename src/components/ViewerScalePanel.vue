@@ -1,21 +1,23 @@
 <template>
-  <div
-    v-if="open"
-    class="absolute left-4 top-4 z-40 w-72 rounded-xl bg-slate-900/92 backdrop-blur-md border border-white/10 shadow-2xl p-4 pointer-events-auto"
-    @pointerdown.stop
+  <ViewerToolSheet
+    :open="open"
+    title="Measure"
+    :subtitle="hint"
+    :summary="ready ? distanceLabel : ''"
+    :narrow="narrow"
+    :expanded="expanded"
+    :above-chrome="aboveChrome"
+    desktop-class="absolute left-4 top-4 z-40 w-72 rounded-xl bg-slate-900/92 backdrop-blur-md border border-white/10 shadow-2xl p-4"
+    @update:expanded="emit('update:expanded', $event)"
   >
-    <div class="flex items-center justify-between mb-1">
-      <h3 class="text-sm font-semibold text-white">Measure</h3>
+    <template #actions>
       <span v-if="hasScale" class="text-[10px] font-medium uppercase tracking-wide text-sky-300">
         {{ unitLabel }}
       </span>
-    </div>
-    <p class="text-[11px] text-slate-400 leading-snug mb-3">
-      {{ hint }}
-    </p>
+    </template>
 
     <p v-if="!ready" class="text-xs text-sky-200/90 bg-sky-500/10 border border-sky-400/20 rounded-lg px-2.5 py-2">
-      Click and drag to draw a line.
+      {{ narrow ? 'Drag to draw a line.' : 'Click and drag to draw a line.' }}
     </p>
 
     <div v-else class="flex flex-col gap-3">
@@ -56,12 +58,13 @@
         </button>
       </form>
     </div>
-  </div>
+  </ViewerToolSheet>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { MEASURE_UNITS, type MeasureUnit } from '../lib/measureDistance.js';
+import ViewerToolSheet from './ViewerToolSheet.vue';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -71,10 +74,14 @@ const props = defineProps({
   defaultUnit: { type: String, default: 'mm' },
   hasScale: { type: Boolean, default: false },
   scaleEditable: { type: Boolean, default: true },
+  narrow: { type: Boolean, default: false },
+  expanded: { type: Boolean, default: true },
+  aboveChrome: { type: Boolean, default: false },
 });
 
 const emit = defineEmits<{
   save: [payload: { knownLength: number; unit: MeasureUnit }];
+  'update:expanded': [value: boolean];
 }>();
 
 const knownLength = ref('');
