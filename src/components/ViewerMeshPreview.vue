@@ -42,9 +42,27 @@
             </button>
           </div>
         </div>
-        <div ref="viewport" class="relative flex-1 min-h-0 bg-slate-950 touch-none"></div>
+        <div ref="viewport" class="relative flex-1 min-h-0 bg-slate-950 touch-none">
+          <div class="absolute z-10 bottom-3 left-3 flex items-end gap-2 pointer-events-none">
+            <LightCompass
+              ref="compassComponentRef"
+              class="pointer-events-auto"
+              :light-dir="lightDir"
+              @pointerdown.stop
+            />
+            <button
+              type="button"
+              class="pointer-events-auto w-8 h-8 rounded-lg bg-slate-950/75 backdrop-blur-md border border-white/20 text-white/80 hover:text-white hover:bg-white/10 flex items-center justify-center"
+              aria-label="Reset light to front"
+              title="Front light"
+              @click="resetLight"
+            >
+              <LocateFixedIcon class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
         <p class="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-700 shrink-0">
-          Experimental · visualization only · not a measured 3D scan · drag to orbit · scroll to zoom
+          Experimental · visualization only · not a measured 3D scan · drag the compass to move light · drag to orbit · scroll to zoom
         </p>
       </div>
     </div>
@@ -52,12 +70,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { LocateFixed as LocateFixedIcon } from '@lucide/vue';
 import type { ReconstructedSurface } from '../lib/surfaceFromNormals.js';
-import { createSurfaceGeometry, frameSurfaceCamera, surfaceMeshRadius } from '../lib/surfacePreview.js';
+import { createSurfaceGeometry, frameSurfaceCamera, rtiLightToPreviewWorld, surfaceMeshRadius } from '../lib/surfacePreview.js';
+import {
+  FRONT_LIGHT,
+  compassPointerToNormalizedUv,
+  normalizedUvToLightDir,
+} from '../lib/lightDirection.js';
 import ExperimentalBadge from './ExperimentalBadge.vue';
+import LightCompass from './LightCompass.vue';
 
 const props = defineProps<{
   open: boolean;
@@ -67,6 +92,8 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'download', 'remask']);
 const viewport = ref<HTMLElement | null>(null);
+const compassComponentRef = ref<{ compassEl?: HTMLElement | null } | null>(null);
+const lightDir = ref(new THREE.Vector3(FRONT_LIGHT.x, FRONT_LIGHT.y, FRONT_LIGHT.z));
 
 const subtitle = computed(() => {
   const surface = props.surface;
@@ -81,8 +108,72 @@ let scene: THREE.Scene | null = null;
 let camera: THREE.PerspectiveCamera | null = null;
 let controls: OrbitControls | null = null;
 let meshObject: THREE.Mesh | null = null;
+let keyLight: THREE.DirectionalLight | null = null;
+let lightDistance = 4;
 let resizeObserver: ResizeObserver | null = null;
 let frameId = 0;
+let unbindCompass: (() => void) | null = null;
+
+function resetLight() {
+  lightDir.value.set(FRONT_LIGHT.x, FRONT_LIGHT.y, FRONT_LIGHT.z);
+  applyLight();
+}
+
+function applyLight() {
+  if (!keyLight) return;
+  const pos = rtiLightToPreviewWorld(lightDir.value, lightDistance);
+  keyLight.position.set(pos.x, pos.y, pos.z);
+}
+
+function setLightFromPointer(event: PointerEvent, compassEl: HTMLElement) {
+  const uv = compassPointerToNormalizedUv(event.clientX, event.clientY, compassEl.getBoundingClientRect());
+  const dir = normalizedUvToLightDir(uv.x, uv.y);
+  lightDir.value.set(dir.x, dir.y, dir.z);
+  applyLight();
+}
+
+function compassElement() {
+  const exposed = compassComponentRef.value?.compassEl as unknown;
+  if (exposed instanceof HTMLElement) return exposed;
+  if (exposed && typeof exposed === 'object' && 'value' in (exposed as object)) {
+    const inner = (exposed as { value: unknown }).value;
+    if (inner instanceof HTMLElement) return inner;
+  }
+  return null;
+}
+
+function bindCompass() {
+  unbindCompass?.();
+  const compassEl = compassElement();
+  if (!compassEl) {
+    unbindCompass = null;
+    return;
+  }
+  let dragging = false;
+  const onDown = (event: PointerEvent) => {
+    dragging = true;
+    compassEl.setPointerCapture(event.pointerId);
+    setLightFromPointer(event, compassEl);
+  };
+  const onMove = (event: PointerEvent) => {
+    if (dragging) setLightFromPointer(event, compassEl);
+  };
+  const onUp = (event: PointerEvent) => {
+    if (!dragging) return;
+    dragging = false;
+    compassEl.releasePointerCapture(event.pointerId);
+  };
+  compassEl.addEventListener('pointerdown', onDown);
+  compassEl.addEventListener('pointermove', onMove);
+  compassEl.addEventListener('pointerup', onUp);
+  compassEl.addEventListener('pointercancel', onUp);
+  unbindCompass = () => {
+    compassEl.removeEventListener('pointerdown', onDown);
+    compassEl.removeEventListener('pointermove', onMove);
+    compassEl.removeEventListener('pointerup', onUp);
+    compassEl.removeEventListener('pointercancel', onUp);
+  };
+}
 
 function disposePreview() {
   if (frameId) cancelAnimationFrame(frameId);
@@ -91,6 +182,7 @@ function disposePreview() {
   resizeObserver = null;
   controls?.dispose();
   controls = null;
+  keyLight = null;
   if (meshObject) {
     meshObject.geometry.dispose();
     const material = meshObject.material;
@@ -150,16 +242,15 @@ function mountPreview() {
   meshObject.rotation.x = -Math.PI / 2;
   scene.add(meshObject);
 
-  scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.55));
-  const key = new THREE.DirectionalLight(0xfff7ed, 1.15);
-  key.position.set(0.9, 1.2, 0.35);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0xbfdbfe, 0.35);
-  fill.position.set(-0.8, 0.6, 0.5);
-  scene.add(fill);
+  const radius = surfaceMeshRadius(surface.mesh);
+  lightDistance = Math.max(radius * 4, 2);
+  scene.add(new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.32));
+  keyLight = new THREE.DirectionalLight(0xfff7ed, 1.35);
+  applyLight();
+  scene.add(keyLight);
 
   const target = new THREE.Vector3();
-  frameSurfaceCamera(camera, target, surfaceMeshRadius(surface.mesh));
+  frameSurfaceCamera(camera, target, radius);
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
@@ -174,15 +265,24 @@ function mountPreview() {
 
 watch(
   () => [props.open, props.surface] as const,
-  ([open, surface]) => {
+  async ([open, surface]) => {
     if (!open || !surface) {
+      unbindCompass?.();
+      unbindCompass = null;
       disposePreview();
       return;
     }
+    resetLight();
     mountPreview();
+    await nextTick();
+    bindCompass();
   },
   { flush: 'post' },
 );
 
-onBeforeUnmount(disposePreview);
+onBeforeUnmount(() => {
+  unbindCompass?.();
+  unbindCompass = null;
+  disposePreview();
+});
 </script>

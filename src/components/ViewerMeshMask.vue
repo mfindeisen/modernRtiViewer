@@ -7,7 +7,11 @@
     leave-from-class="opacity-100 scale-100"
     leave-to-class="opacity-0 scale-95"
   >
-    <div v-if="open" class="absolute inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+    <div
+      v-if="open"
+      class="absolute inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
+      @wheel.prevent="onOverlayWheel"
+    >
       <div class="absolute inset-0 bg-slate-950/75 backdrop-blur-sm" @click="!busy && emit('close')"></div>
       <div class="relative flex flex-col bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-5xl h-[min(46rem,92%)] overflow-hidden text-slate-300">
         <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-700 shrink-0">
@@ -55,9 +59,42 @@
           </button>
           <label class="flex items-center gap-2 text-[11px] text-slate-400 ml-1">
             Size
-            <input v-model.number="brushSize" type="range" min="4" max="80" step="1" class="w-24 accent-amber-400" />
+            <input v-model.number="brushSize" type="range" min="1" max="80" step="1" class="w-24 accent-amber-400" />
             <span class="w-6 tabular-nums text-slate-300">{{ brushSize }}</span>
           </label>
+          <div class="w-px h-5 bg-slate-700 mx-1"></div>
+          <div class="inline-flex items-center rounded-lg overflow-hidden border border-slate-600">
+            <button
+              type="button"
+              class="px-2 py-1 text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-40"
+              aria-label="Zoom out"
+              title="Zoom out (scroll)"
+              :disabled="busy || viewZoom <= MIN_VIEW_ZOOM"
+              @click="zoomByButton(1 / 1.25)"
+            >
+              −
+            </button>
+            <button
+              type="button"
+              class="px-2 py-1 min-w-[3.25rem] text-[11px] font-medium tabular-nums bg-slate-700 text-slate-300 hover:bg-slate-600"
+              aria-label="Fit image"
+              title="Fit to view"
+              :disabled="busy"
+              @click="resetView"
+            >
+              {{ zoomPercent }}%
+            </button>
+            <button
+              type="button"
+              class="px-2 py-1 text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-40"
+              aria-label="Zoom in"
+              title="Zoom in (scroll)"
+              :disabled="busy || viewZoom >= MAX_VIEW_ZOOM"
+              @click="zoomByButton(1.25)"
+            >
+              +
+            </button>
+          </div>
           <div class="w-px h-5 bg-slate-700 mx-1"></div>
           <button type="button" class="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-700 text-slate-300 hover:bg-slate-600" :disabled="busy" @click="runAuto">
             Auto
@@ -91,24 +128,28 @@
 
         <div
           ref="stageEl"
-          class="relative flex-1 min-h-0 bg-slate-950 flex items-center justify-center overflow-hidden touch-none p-3"
+          class="relative flex-1 min-h-0 bg-slate-950 flex items-center justify-center overflow-hidden touch-none overscroll-none p-3 select-none"
+          :class="panning || spaceDown ? (panning ? 'cursor-grabbing' : 'cursor-grab') : ''"
+          @wheel.prevent="onWheel"
+          @contextmenu.prevent
+          @mousedown="onMouseDown"
           @pointerdown="onPointerDown"
           @pointermove="onPointerMove"
           @pointerup="onPointerUp"
           @pointercancel="onPointerUp"
-          @pointerleave="cursor.visible = false"
+          @pointerleave="onPointerLeave"
           @lostpointercapture="onPointerUp"
         >
           <div
             v-if="source"
             class="relative shrink-0"
-            :style="{ width: `${fit.width}px`, height: `${fit.height}px` }"
+            :style="imageStyle"
           >
-            <canvas ref="imageCanvas" class="absolute inset-0 h-full w-full"></canvas>
-            <canvas ref="overlayCanvas" class="absolute inset-0 h-full w-full pointer-events-none"></canvas>
+            <canvas ref="imageCanvas" class="absolute inset-0 h-full w-full" :style="{ imageRendering }"></canvas>
+            <canvas ref="overlayCanvas" class="absolute inset-0 h-full w-full pointer-events-none" :style="{ imageRendering }"></canvas>
           </div>
           <div
-            v-if="cursor.visible"
+            v-if="cursor.visible && !panning && !spaceDown"
             class="pointer-events-none absolute rounded-full border border-amber-300/80"
             :style="cursorStyle"
           ></div>
@@ -126,7 +167,7 @@
         </div>
 
         <p class="px-4 py-2 text-[11px] text-slate-500 border-t border-slate-700 shrink-0">
-          Amber = included in the mesh. Auto drops the dark table and keeps the largest object. Erase the colour chart and labels, then generate.
+          Amber = included in the mesh. Scroll to zoom, Space-drag or middle-drag to pan. Auto drops the dark table and keeps the largest object. Erase the colour chart and labels, then generate.
           Max uses the full RTI ({{ nativeDim.toLocaleString() }} px) and can take much longer.
           <span v-if="error" class="block mt-1 text-rose-300">{{ error }}</span>
         </p>
@@ -193,6 +234,9 @@ const resolutionOptions = computed(() => {
 });
 const displayPercent = computed(() => Math.max(0, Math.min(100, Math.round(props.progress ?? 0))));
 
+const MIN_VIEW_ZOOM = 1;
+const MAX_VIEW_ZOOM = 16;
+
 const tool = ref<'paint' | 'erase'>('erase');
 const brushSize = ref(28);
 const stageEl = ref<HTMLElement | null>(null);
@@ -200,15 +244,20 @@ const imageCanvas = ref<HTMLCanvasElement | null>(null);
 const overlayCanvas = ref<HTMLCanvasElement | null>(null);
 const mask = ref(new Uint8Array(0));
 const fit = ref({ width: 320, height: 240 });
+const viewZoom = ref(1);
+const pan = ref({ x: 0, y: 0 });
+const spaceDown = ref(false);
+const panning = ref(false);
 const cursor = ref({ visible: false, x: 0, y: 0 });
 let resizeObserver: ResizeObserver | null = null;
 let painting = false;
 let overlayData: ImageData | null = null;
+let panLast = { x: 0, y: 0 };
 
 function screenBrushRadius() {
   const layout = canvasLayout();
   if (!layout) return brushSize.value;
-  return Math.max(4, brushSize.value * layout.scale);
+  return Math.max(2, brushSize.value * layout.scale);
 }
 
 const hasSelection = computed(() => maskCoverage(mask.value) > 0);
@@ -230,6 +279,69 @@ const cursorStyle = computed(() => {
   };
 });
 
+const zoomPercent = computed(() => {
+  const source = props.source;
+  if (!source || fit.value.width < 1) return 100;
+  return Math.max(1, Math.round((fit.value.width / source.width) * viewZoom.value * 100));
+});
+
+const imageRendering = computed(() => {
+  const source = props.source;
+  if (!source || fit.value.width < 1) return 'auto';
+  return (fit.value.width / source.width) * viewZoom.value >= 1.5 ? 'pixelated' : 'auto';
+});
+
+const imageStyle = computed(() => ({
+  width: `${fit.value.width}px`,
+  height: `${fit.value.height}px`,
+  transform: `translate(${pan.value.x}px, ${pan.value.y}px) scale(${viewZoom.value})`,
+  transformOrigin: 'center center',
+}));
+
+function clampViewZoom(zoom: number) {
+  return Math.min(MAX_VIEW_ZOOM, Math.max(MIN_VIEW_ZOOM, zoom));
+}
+
+function clampPan(x: number, y: number, zoom: number) {
+  const stage = stageEl.value;
+  if (!stage || zoom <= 1.001) return { x: 0, y: 0 };
+  const maxX = Math.max(0, (fit.value.width * zoom - stage.clientWidth) / 2);
+  const maxY = Math.max(0, (fit.value.height * zoom - stage.clientHeight) / 2);
+  return {
+    x: Math.min(maxX, Math.max(-maxX, x)),
+    y: Math.min(maxY, Math.max(-maxY, y)),
+  };
+}
+
+function resetView() {
+  viewZoom.value = 1;
+  pan.value = { x: 0, y: 0 };
+}
+
+function zoomAt(clientX: number, clientY: number, factor: number) {
+  const stage = stageEl.value;
+  if (!stage || !props.source) return;
+  const next = clampViewZoom(viewZoom.value * factor);
+  if (Math.abs(next - viewZoom.value) < 0.0001) return;
+  const rect = stage.getBoundingClientRect();
+  const cursorX = clientX - rect.left - rect.width / 2;
+  const cursorY = clientY - rect.top - rect.height / 2;
+  const ratio = next / viewZoom.value;
+  viewZoom.value = next;
+  pan.value = clampPan(
+    cursorX * (1 - ratio) + pan.value.x * ratio,
+    cursorY * (1 - ratio) + pan.value.y * ratio,
+    next,
+  );
+}
+
+function zoomByButton(factor: number) {
+  const stage = stageEl.value;
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
+}
+
 function updateFit() {
   const stage = stageEl.value;
   const source = props.source;
@@ -241,6 +353,7 @@ function updateFit() {
     width: Math.max(1, Math.round(source.width * scale)),
     height: Math.max(1, Math.round(source.height * scale)),
   };
+  pan.value = clampPan(pan.value.x, pan.value.y, viewZoom.value);
 }
 
 function observeStage() {
@@ -356,9 +469,41 @@ function stamp(event: PointerEvent) {
   paintOverlay();
 }
 
+function wantsPan(event: PointerEvent) {
+  return event.button === 1 || (event.button === 0 && spaceDown.value);
+}
+
+function onMouseDown(event: MouseEvent) {
+  if (event.button === 1) event.preventDefault();
+}
+
+function onWheel(event: WheelEvent) {
+  if (props.busy || !props.source) return;
+  const dy = event.deltaY;
+  if (dy === 0) return;
+  const raw = event.deltaMode === WheelEvent.DOM_DELTA_PIXEL
+    ? Math.exp(-dy * 0.003)
+    : (dy < 0 ? 1.12 : 1 / 1.12);
+  const factor = Math.min(1.25, Math.max(1 / 1.25, raw));
+  zoomAt(event.clientX, event.clientY, factor);
+}
+
+function onOverlayWheel() {
+  // Swallow wheel events on the chrome so the RTI viewer behind the modal does not zoom.
+}
+
 function onPointerDown(event: PointerEvent) {
-  if (props.busy || event.button !== 0) return;
+  if (props.busy) return;
   const stage = stageEl.value;
+  if (wantsPan(event)) {
+    event.preventDefault();
+    painting = false;
+    panning.value = true;
+    panLast = { x: event.clientX, y: event.clientY };
+    stage?.setPointerCapture(event.pointerId);
+    return;
+  }
+  if (event.button !== 0) return;
   stage?.setPointerCapture(event.pointerId);
   painting = true;
   stamp(event);
@@ -369,16 +514,67 @@ function onPointerMove(event: PointerEvent) {
   if (stage) {
     const rect = stage.getBoundingClientRect();
     cursor.value = {
-      visible: true,
+      visible: !panning.value && !spaceDown.value,
       x: event.clientX - rect.left,
       y: event.clientY - rect.top,
     };
+  }
+  if (panning.value) {
+    pan.value = clampPan(
+      pan.value.x + event.clientX - panLast.x,
+      pan.value.y + event.clientY - panLast.y,
+      viewZoom.value,
+    );
+    panLast = { x: event.clientX, y: event.clientY };
+    return;
   }
   if (painting) stamp(event);
 }
 
 function onPointerUp() {
   painting = false;
+  panning.value = false;
+}
+
+function onPointerLeave() {
+  if (!painting && !panning.value) cursor.value.visible = false;
+}
+
+function onKeyDown(event: KeyboardEvent) {
+  if (event.code !== 'Space' || event.repeat) return;
+  const tag = (event.target as HTMLElement | null)?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  event.preventDefault();
+  spaceDown.value = true;
+}
+
+function onKeyUp(event: KeyboardEvent) {
+  if (event.code === 'Space') spaceDown.value = false;
+}
+
+function onWindowBlur() {
+  spaceDown.value = false;
+  panning.value = false;
+}
+
+let viewKeysBound = false;
+
+function bindViewKeys() {
+  if (viewKeysBound) return;
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onWindowBlur);
+  viewKeysBound = true;
+}
+
+function unbindViewKeys() {
+  if (!viewKeysBound) return;
+  window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('keyup', onKeyUp);
+  window.removeEventListener('blur', onWindowBlur);
+  viewKeysBound = false;
+  spaceDown.value = false;
+  panning.value = false;
 }
 
 function resetFromSource() {
@@ -397,6 +593,8 @@ function resetFromSource() {
 
 onBeforeUnmount(() => {
   painting = false;
+  panning.value = false;
+  unbindViewKeys();
   resizeObserver?.disconnect();
 });
 
@@ -404,12 +602,17 @@ watch(
   () => [props.open, props.source] as const,
   ([open]) => {
     painting = false;
+    panning.value = false;
     if (!open) {
       resizeObserver?.disconnect();
       resizeObserver = null;
+      unbindViewKeys();
+      resetView();
       return;
     }
+    resetView();
     resetFromSource();
+    bindViewKeys();
     nextTick(() => {
       observeStage();
       drawImage();

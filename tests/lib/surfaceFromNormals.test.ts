@@ -300,6 +300,13 @@ describe('surfaceFromNormals', () => {
 });
 
 describe('surfacePreview helpers', () => {
+  it('maps RTI light directions onto the preview mesh', async () => {
+    const { rtiLightToPreviewWorld } = await import('@/lib/surfacePreview.js');
+    expect(rtiLightToPreviewWorld({ x: 0, y: 0, z: 1 })).toEqual({ x: 0, y: 1, z: 0 });
+    expect(rtiLightToPreviewWorld({ x: 1, y: 0, z: 0 })).toEqual({ x: 1, y: 0, z: 0 });
+    expect(rtiLightToPreviewWorld({ x: 0, y: 1, z: 0 })).toEqual({ x: 0, y: 0, z: 1 });
+  });
+
   it('converts byte colors to 0–1 floats', async () => {
     const { vertexColorsToFloats, surfaceMeshRadius } = await import('@/lib/surfacePreview.js');
     const rgb = vertexColorsToFloats(new Uint8Array([0, 128, 255]));

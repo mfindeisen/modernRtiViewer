@@ -30,6 +30,22 @@ export function createSurfaceGeometry(mesh: SurfaceMesh) {
   return geometry;
 }
 
+/**
+ * Map an RTI hemisphere light (image-right, image-up, toward camera)
+ * into world space for the preview mesh (rotated -90° around X, Y-up).
+ */
+export function rtiLightToPreviewWorld(
+  light: { x: number; y: number; z: number },
+  distance = 1,
+) {
+  const len = Math.hypot(light.x, light.y, light.z) || 1;
+  return {
+    x: (light.x / len) * distance,
+    y: (light.z / len) * distance,
+    z: (light.y / len) * distance,
+  };
+}
+
 export function frameSurfaceCamera(
   camera: THREE.PerspectiveCamera,
   target: THREE.Vector3,
