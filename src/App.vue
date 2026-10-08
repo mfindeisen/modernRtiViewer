@@ -49,6 +49,16 @@
         <RtiViewer :url="loadedUrl" class="min-h-[49rem] h-[min(80vh,calc(100svh-12rem))]" />
       </div>
     </main>
+
+    <footer class="max-w-6xl mx-auto mt-8 pt-6 border-t border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between text-sm text-slate-500">
+      <p>Modern RTI Viewer v{{ VIEWER_VERSION }} &middot; GPL-3.0</p>
+      <nav class="flex flex-wrap gap-x-5 gap-y-1">
+        <a href="https://github.com/mfindeisen/modernRtiViewer" target="_blank" rel="noopener" class="hover:text-slate-900 transition-colors">GitHub</a>
+        <a :href="docsUrl" target="_blank" class="hover:text-slate-900 transition-colors">Documentation</a>
+        <a href="https://github.com/mfindeisen/rtiDb" target="_blank" rel="noopener" class="hover:text-slate-900 transition-colors">rtiDb</a>
+        <a href="https://github.com/mfindeisen/rtiprep" target="_blank" rel="noopener" class="hover:text-slate-900 transition-colors">rtiprep</a>
+      </nav>
+    </footer>
   </div>
 </template>
 
@@ -56,6 +66,7 @@
 import { ref } from 'vue';
 import { X as XIcon } from '@lucide/vue';
 import RtiViewer from './components/RtiViewer.vue';
+import { VIEWER_VERSION } from './version.js';
 
 const STORAGE_KEY = 'modernRtiViewer.datasetUrl';
 const NOTICE_KEY = 'modernRtiViewer.demoNoticeDismissed';

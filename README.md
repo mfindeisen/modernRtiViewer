@@ -2,6 +2,10 @@
 
 The Modern RTI Viewer is a rewrite of traditional `spidergl` RTI viewers, using Vue 3 and Three.js. It has a quadtree LOD system and real-time lighting in custom WebGL shaders, and builds to a standalone web component (`<modern-rti-viewer>`).
 
+**[Live demo](https://mfindeisen.github.io/modernRtiViewer/)** · [Documentation](https://mfindeisen.github.io/modernRtiViewer/docs/)
+
+The demo is deployed to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`) and loads a sample HSH RTI from `public/sample/`. Build it locally with `pnpm run build:pages` and `pnpm run preview:pages`.
+
 Unified ecosystem docs (including rtiDb integration) live in the [rtiDb documentation portal](https://github.com/mfindeisen/rtiDb). This repo also has its own VitePress site under `docs/`.
 
 ## Installation
