@@ -6,7 +6,6 @@
     :summary="gainSummary"
     :narrow="narrow"
     :expanded="expanded"
-    :above-chrome="aboveChrome"
     @update:expanded="emit('update:expanded', $event)"
   >
     <template #actions>
@@ -66,7 +65,6 @@ const props = defineProps({
   pickFeedback: { type: String, default: '' },
   narrow: { type: Boolean, default: false },
   expanded: { type: Boolean, default: true },
-  aboveChrome: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(['update:colorGain', 'reset', 'update:expanded']);

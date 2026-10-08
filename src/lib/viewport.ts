@@ -1,12 +1,6 @@
 /** Matches Tailwind `lg` / existing mobile sidebar breakpoint. */
 export const NARROW_VIEWPORT_QUERY = '(max-width: 1023px)';
 
-/**
- * Height of the mobile chrome dock (compass row), excluding safe-area.
- * Keep in sync with the dock padding + 4.5rem compass in RtiViewer.
- */
-export const MOBILE_CHROME_DOCK = '5.5rem';
-
 export const TAP_MAX_MOVE_PX = 10;
 export const TAP_MAX_DURATION_MS = 400;
 

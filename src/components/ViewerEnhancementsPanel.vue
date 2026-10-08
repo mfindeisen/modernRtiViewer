@@ -4,7 +4,6 @@
     title="Enhancements"
     :narrow="narrow"
     :expanded="expanded"
-    :above-chrome="aboveChrome"
     :desktop-class="desktopClass"
     @update:expanded="emit('update:expanded', $event)"
   >
@@ -255,7 +254,6 @@ const props = defineProps({
   stackBelowWhiteBalance: { type: Boolean, default: false },
   narrow: { type: Boolean, default: false },
   expanded: { type: Boolean, default: true },
-  aboveChrome: { type: Boolean, default: false },
   lineDrawingMode: { type: Boolean, default: false },
   ridgeThreshold: { type: Number, default: 0.14 },
   valleyThreshold: { type: Number, default: 0.1 },

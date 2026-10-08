@@ -26,7 +26,7 @@
       >
         <ChevronDownIcon
           class="w-4 h-4 transition-transform"
-          :class="expanded ? '' : '-rotate-180'"
+          :class="expanded ? '-rotate-180' : ''"
         />
       </button>
     </div>
@@ -48,11 +48,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
 import { ChevronDown as ChevronDownIcon } from '@lucide/vue';
-import { MOBILE_CHROME_DOCK } from '../lib/viewport.js';
 
-const props = defineProps({
+defineProps({
   open: { type: Boolean, default: false },
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
@@ -60,7 +58,6 @@ const props = defineProps({
   narrow: { type: Boolean, default: false },
   expanded: { type: Boolean, default: true },
   collapsible: { type: Boolean, default: true },
-  aboveChrome: { type: Boolean, default: false },
   desktopClass: {
     type: String,
     default: 'absolute top-4 right-4 z-40 w-56 rounded-xl bg-slate-900/90 backdrop-blur-md border border-white/10 shadow-2xl p-4',
@@ -71,13 +68,5 @@ const emit = defineEmits<{
   'update:expanded': [value: boolean];
 }>();
 
-const mobileClass = computed(() => {
-  const dock = props.aboveChrome
-    ? `bottom-[calc(${MOBILE_CHROME_DOCK}+env(safe-area-inset-bottom,0px))]`
-    : 'bottom-0 pb-[env(safe-area-inset-bottom,0px)]';
-  return [
-    'absolute inset-x-0 z-40 rounded-t-2xl bg-slate-900/94 backdrop-blur-md border-t border-white/10 shadow-[0_-8px_24px_rgba(0,0,0,0.45)]',
-    dock,
-  ];
-});
+const mobileClass = 'absolute inset-x-0 top-0 z-40 rounded-b-2xl bg-slate-900/94 backdrop-blur-md border-b border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.45)]';
 </script>

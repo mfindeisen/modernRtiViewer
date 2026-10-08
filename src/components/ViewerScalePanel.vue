@@ -6,7 +6,6 @@
     :summary="ready ? distanceLabel : ''"
     :narrow="narrow"
     :expanded="expanded"
-    :above-chrome="aboveChrome"
     desktop-class="absolute left-4 top-4 z-40 w-72 rounded-xl bg-slate-900/92 backdrop-blur-md border border-white/10 shadow-2xl p-4"
     @update:expanded="emit('update:expanded', $event)"
   >
@@ -76,7 +75,6 @@ const props = defineProps({
   scaleEditable: { type: Boolean, default: true },
   narrow: { type: Boolean, default: false },
   expanded: { type: Boolean, default: true },
-  aboveChrome: { type: Boolean, default: false },
 });
 
 const emit = defineEmits<{

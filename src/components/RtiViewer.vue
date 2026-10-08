@@ -149,7 +149,6 @@
         :pick-feedback="wbPickFeedback"
         :narrow="isNarrow"
         :expanded="wbSheetExpanded"
-        :above-chrome="isNarrow && chromeVisible"
         :suppressed="isNarrow && showEnhancements"
         @update:color-gain="onColorGainUpdate"
         @update:expanded="wbSheetExpanded = $event"
@@ -177,7 +176,6 @@
         :stack-below-white-balance="(currentMode === 'whitebalance' || whiteBalanceActive) && !loading"
         :narrow="isNarrow"
         :expanded="enhancementsSheetExpanded"
-        :above-chrome="isNarrow && chromeVisible"
         @update:diffuse-gain="onDiffuseGainChange"
         @update:unsharp-amount="onUnsharpAmountChange"
         @update:exposure="onExposureChange"
@@ -204,7 +202,6 @@
         :scale-editable="scaleEditable"
         :narrow="isNarrow"
         :expanded="measureSheetExpanded"
-        :above-chrome="isNarrow && chromeVisible"
         @update:expanded="measureSheetExpanded = $event"
         @save="confirmScale"
       />
