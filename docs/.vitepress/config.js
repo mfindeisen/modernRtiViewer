@@ -3,8 +3,8 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: "Modern RTI Viewer",
   description: "A high-performance Vue 3 & Three.js viewer for Reflectance Transformation Imaging (RTI) data.",
-  base: '/docs/',
-  outDir: '../dist/docs',
+  base: process.env.DOCS_BASE || '/docs/',
+  outDir: process.env.DOCS_OUT_DIR || '../dist/docs',
   markdown: {
     math: true,
   },
