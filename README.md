@@ -4,7 +4,7 @@ The Modern RTI Viewer is a rewrite of traditional `spidergl` RTI viewers, using 
 
 **[Live demo](https://mfindeisen.github.io/modernRtiViewer/)** · [Documentation](https://mfindeisen.github.io/modernRtiViewer/docs/)
 
-The demo is deployed to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`) and loads a sample HSH RTI from `public/sample/`. Build it locally with `pnpm run build:pages` and `pnpm run preview:pages`.
+The demo is deployed to GitHub Pages on every push to `main` (`.github/workflows/pages.yml`) and loads a sample HSH RTI from `public/sample/`: a modern obsidian point (`Lookout_Mtn`) by [Leszek Pawlowicz](https://rtimage.us/?page_id=18) (Northern Arizona University). Build it locally with `pnpm run build:pages` and `pnpm run preview:pages`.
 
 Unified ecosystem docs (including rtiDb integration) live in the [rtiDb documentation portal](https://github.com/mfindeisen/rtiDb). This repo also has its own VitePress site under `docs/`.
 
