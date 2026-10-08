@@ -27,7 +27,15 @@
           Load
         </button>
       </form>
-      <aside class="mb-4 px-4 py-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+      <aside v-if="!noticeDismissed" class="relative mb-4 pl-4 pr-10 py-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+        <button
+          type="button"
+          aria-label="Dismiss notice"
+          class="absolute top-2 right-2 w-7 h-7 rounded-md flex items-center justify-center text-amber-700 hover:bg-amber-100 hover:text-amber-950 transition-colors"
+          @click="dismissNotice"
+        >
+          <XIcon class="w-4 h-4" />
+        </button>
         <p class="font-medium">Standalone demo - some features are intentionally disabled</p>
         <ul class="mt-1 list-disc pl-5 space-y-0.5 text-amber-800">
           <li><strong>Annotations</strong> are not available: they are stored in the
@@ -37,7 +45,7 @@
           <li><strong>Other datasets</strong> can be loaded by URL only if their server allows cross-origin (CORS) requests.</li>
         </ul>
       </aside>
-      <div class="glass-card p-6 border border-slate-200 shadow-xl rounded-2xl bg-white">
+      <div class="demo-viewer-card glass-card p-6 border border-slate-200 shadow-xl rounded-2xl bg-white">
         <RtiViewer :url="loadedUrl" class="min-h-[49rem] h-[min(80vh,calc(100svh-12rem))]" />
       </div>
     </main>
@@ -46,9 +54,11 @@
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { X as XIcon } from '@lucide/vue';
 import RtiViewer from './components/RtiViewer.vue';
 
 const STORAGE_KEY = 'modernRtiViewer.datasetUrl';
+const NOTICE_KEY = 'modernRtiViewer.demoNoticeDismissed';
 const base = import.meta.env.BASE_URL;
 const docsUrl = `${base}docs/`;
 const fallback = import.meta.env.VITE_DEFAULT_DATASET || `${base}test-record`;
@@ -61,6 +71,18 @@ const initial = queryUrl
 
 const datasetUrl = ref(initial);
 const loadedUrl = ref(initial);
+const noticeDismissed = ref(
+  typeof localStorage !== 'undefined' && localStorage.getItem(NOTICE_KEY) === '1',
+);
+
+function dismissNotice() {
+  noticeDismissed.value = true;
+  try {
+    localStorage.setItem(NOTICE_KEY, '1');
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
 
 function applyUrl() {
   const next = datasetUrl.value.trim() || fallback;
@@ -73,3 +95,15 @@ function applyUrl() {
   }
 }
 </script>
+
+<style>
+/* The viewer squares its top corners on narrow screens to sit flush under an rtiDb header;
+   the standalone demo has no header, so keep them rounded. */
+@media (max-width: 1023px) {
+  .demo-viewer-card .rti-viewer-root,
+  .demo-viewer-card .rti-viewer-sidebar {
+    border-top-left-radius: 0.75rem !important;
+    border-top-right-radius: 0.75rem !important;
+  }
+}
+</style>
