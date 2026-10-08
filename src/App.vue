@@ -27,6 +27,16 @@
           Load
         </button>
       </form>
+      <aside class="mb-4 px-4 py-3 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+        <p class="font-medium">Standalone demo &mdash; some features are intentionally disabled</p>
+        <ul class="mt-1 list-disc pl-5 space-y-0.5 text-amber-800">
+          <li><strong>Annotations</strong> are not available: they are stored in the
+            <a href="https://github.com/mfindeisen/rtiDb" target="_blank" rel="noopener" class="underline hover:text-amber-950">rtiDb</a>
+            database, which this static page has no connection to.</li>
+          <li><strong>Scale calibration</strong> works, but is not saved and resets on reload.</li>
+          <li><strong>Other datasets</strong> can be loaded by URL only if their server allows cross-origin (CORS) requests.</li>
+        </ul>
+      </aside>
       <div class="glass-card p-6 border border-slate-200 shadow-xl rounded-2xl bg-white">
         <RtiViewer :url="loadedUrl" class="min-h-[49rem] h-[min(80vh,calc(100svh-12rem))]" />
       </div>

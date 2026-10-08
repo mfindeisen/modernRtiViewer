@@ -39,7 +39,7 @@
 
   <div
     v-if="currentMode === 'whitebalance' && !loading && !narrow"
-    class="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-100 text-sm font-medium shadow-lg backdrop-blur-sm pointer-events-none"
+    class="absolute top-4 left-1/2 -translate-x-1/2 z-40 px-4 py-2 rounded-xl bg-slate-900/90 border border-cyan-400/60 text-white text-sm font-medium shadow-lg backdrop-blur-sm pointer-events-none"
   >
     {{ pickFeedback || 'Click a white or gray patch on the color chart' }}
   </div>
